@@ -280,9 +280,9 @@ with st.sidebar:
     st.subheader("📦 Composição da Carteira")
     
     # Inputs com valores padrão
-    default_stocks = "BBAS3, ITUB4, VALE3, WEGE3, PETR4, PRIO3, RENT3, LREN3"
-    default_fiis = "HGLG11, KNRI11, MXRF11, XPLG11, VISC11"
-    default_etfs = "IVVB11, SMAL11"
+    default_stocks = "AGRO3, B3SA3, BBAS3, BBSE3, BPAC11, CMIG3, EGIE3, ITUB3, PRIO3, PSSA3, SAPR4, SBSP3, TAEE3, TOTS3, VIVT3, WEGE3"
+    default_fiis = "ALZR11, BRCO11, BTLG11, HGLG11, HGRE11, HGRU11, KNCR11, KNRI11, LVBI11, MXRF11, PMLL11, TRXF11, VILG11, VISC11, XPLG11, XPML11"
+    default_etfs = "IVVB11"
     
     with st.expander("Selecionar Ativos", expanded=False):
         stocks_input = st.text_area("Ações BR", default_stocks)
@@ -290,12 +290,12 @@ with st.sidebar:
         etfs_input = st.text_area("ETFs", default_etfs)
     
     st.markdown("### Pesos (%)")
-    w_stocks = st.slider("Ações", 0, 100, 25)
-    w_fiis = st.slider("FIIs", 0, 100, 15)
-    w_etfs = st.slider("ETFs", 0, 100, 20)
-    w_tarpon = st.number_input("Fundo Tarpon", 0, 100, 20)
-    w_absolute = st.number_input("Fundo Absolute", 0, 100, 10)
-    w_sparta = st.number_input("Fundo Sparta", 0, 100, 10)
+    w_stocks = st.slider("Ações", 0, 100, 15)
+    w_fiis = st.slider("FIIs", 0, 100, 5)
+    w_etfs = st.slider("ETFs", 0, 100, 30)
+    w_tarpon = st.number_input("Fundo Tarpon", 0, 100, 30)
+    w_absolute = st.number_input("Fundo Absolute", 0, 100, 15)
+    w_sparta = st.number_input("Fundo Sparta", 0, 100, 5)
     
     total_w = w_stocks + w_fiis + w_etfs + w_tarpon + w_absolute + w_sparta
     if total_w != 100:
