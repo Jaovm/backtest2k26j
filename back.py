@@ -241,8 +241,8 @@ with st.sidebar:
     st.markdown("---")
     st.header("📦 Seleção de Ativos")
     
-    default_stocks = "PRIO3, PSSA3, SAPR4, SBSP3, AGRO3, B3SA3, BBAS3, BBSE3"
-    default_fiis = "MXRF11, ALZR11, BRCO11, BTLG11, PMLL11, TRXF11"
+    default_stocks = "AGRO3, B3SA3, BBAS3, BBSE3, BPAC11, CMIG3, EGIE3, ITUB3, PRIO3, PSSA3, SAPR4, SBSP3, TAEE3, TOTS3, VIVT3, WEGE3"
+    default_fiis = "ALZR11, BRCO11, BTLG11, HGLG11, HGRE11, HGRU11, KNCR11, KNRI11, LVBI11, MXRF11, PMLL11, TRXF11, TRXF13, VILG11, VISC11, XPLG11, XPML11"
     default_etfs = "GPUS11, VWRA11"
     
     stocks_input = st.text_area("Ações (separadas por vírgula)", default_stocks)
@@ -253,12 +253,12 @@ with st.sidebar:
     st.header("⚖️ Alocação de Pesos (%)")
     st.info("A soma deve ser 100%. Se diferir, será normalizado.")
     
-    w_stocks = st.slider("Carteira Ações", 0, 100, 25)
-    w_fiis = st.slider("Carteira FIIs", 0, 100, 25)
-    w_etfs = st.slider("Carteira ETFs", 0, 100, 20)
-    w_tarpon = st.number_input("Tarpon GT Master", 0, 100, 10)
-    w_absolute = st.number_input("Absolute Pace", 0, 100, 10)
-    w_sparta = st.number_input("Sparta Infra", 0, 100, 10)
+    w_stocks = st.slider("Carteira Ações", 0, 100, 10)
+    w_fiis = st.slider("Carteira FIIs", 0, 100, 5)
+    w_etfs = st.slider("Carteira ETFs", 0, 100, 30)
+    w_tarpon = st.number_input("Tarpon GT Master", 0, 100, 30)
+    w_absolute = st.number_input("Absolute Pace", 0, 100, 20)
+    w_sparta = st.number_input("Sparta Infra", 0, 100, 5)
     
     total_weight = w_stocks + w_fiis + w_etfs + w_tarpon + w_absolute + w_sparta
     if total_weight != 100:
