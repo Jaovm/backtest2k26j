@@ -176,7 +176,7 @@ def get_benchmark_data(start_date, end_date):
     """Baixa o Ibovespa (^BVSP) como benchmark de mercado."""
     try:
         # Ibovespa
-        ibov = yf.download("^BVSP", start=start_date, end=end_date, progress=False)['Adj Close']
+        ibov = yf.download("BOVA11", start=start_date, end=end_date, progress=False)['Adj Close']
         ibov = ibov.resample('ME').last().pct_change()
         if isinstance(ibov, pd.DataFrame):
              ibov = ibov.iloc[:, 0]
