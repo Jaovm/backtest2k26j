@@ -242,7 +242,7 @@ with st.sidebar:
     st.header("📦 Seleção de Ativos")
     
     default_stocks = "AGRO3, B3SA3, BBAS3, BBSE3, BPAC11, CMIG3, EGIE3, ITUB3, PRIO3, PSSA3, SAPR4, SBSP3, TAEE3, TOTS3, VIVT3, WEGE3"
-    default_fiis = "ALZR11, BRCO11, BTLG11, HGLG11, HGRE11, HGRU11, KNCR11, KNRI11, LVBI11, MXRF11, PMLL11, TRXF11, TRXF13, VILG11, VISC11, XPLG11, XPML11"
+    default_fiis = "ALZR11, BRCO11, BTLG11, HGLG11, HGRE11, HGRU11, KNCR11, KNRI11, LVBI11, MXRF11, PMLL11, TRXF11, VILG11, VISC11, XPLG11, XPML11"
     default_etfs = "GPUS11, VWRA11"
     
     stocks_input = st.text_area("Ações (separadas por vírgula)", default_stocks)
