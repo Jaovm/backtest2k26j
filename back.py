@@ -147,7 +147,7 @@ def get_market_data(tickers, start_date, end_date):
 # ==========================================
 # 3. LÓGICA DE BACKTEST E MÉTRICAS
 # ==========================================
-def calculate_portfolio_performance(returns_df, weights, rebalance_freq='Mensal'):
+def calculate_portfolio_performance(returns_df, weights, initial_cap=10000, monthly_contribution=1000, rebalance_freq='Mensal'):
     returns_df = returns_df.dropna()
     available_assets = [c for c in returns_df.columns if c in weights and weights[c] > 0]
     
@@ -157,7 +157,8 @@ def calculate_portfolio_performance(returns_df, weights, rebalance_freq='Mensal'
     active_weights = np.array([weights[c] for c in available_assets])
     active_weights = active_weights / active_weights.sum() 
     
-    portfolio_value = [100.0]
+    # Iniciamos com o capital inicial
+    portfolio_value = [initial_cap]
     monthly_returns = []
     current_weights = active_weights.copy()
     dates = returns_df.index
@@ -165,30 +166,31 @@ def calculate_portfolio_performance(returns_df, weights, rebalance_freq='Mensal'
     
     for i in range(len(dates)):
         r_t = asset_returns_np[i]
+        
+        # 1. Rentabiliza o saldo do mês anterior
         port_ret = np.dot(current_weights, r_t)
         monthly_returns.append(port_ret)
         
-        new_value = portfolio_value[-1] * (1 + port_ret)
+        # 2. Novo valor = (Valor Anterior * Rentabilidade) + Aporte
+        new_value = (portfolio_value[-1] * (1 + port_ret)) + monthly_contribution
         portfolio_value.append(new_value)
         
+        # 3. Atualiza pesos pela variação dos ativos
         current_weights = current_weights * (1 + r_t) / (1 + port_ret)
         
-        is_rebalance_time = False
-        current_date = dates[i]
-        
-        if rebalance_freq == 'Mensal':
-            is_rebalance_time = True
-        elif rebalance_freq == 'Anual' and current_date.month == 12:
-            is_rebalance_time = True
+        # Rebalanceamento
+        is_rebalance_time = (rebalance_freq == 'Mensal') or \
+                            (rebalance_freq == 'Anual' and dates[i].month == 12)
             
         if is_rebalance_time:
             current_weights = active_weights.copy()
             
+    # O portfolio_value terá len(dates)+1, removemos o primeiro (que é apenas o inicial) 
+    # ou ajustamos o índice para bater com as datas
     portfolio_series = pd.Series(portfolio_value[1:], index=dates)
     monthly_returns_series = pd.Series(monthly_returns, index=dates)
     
     return portfolio_series, monthly_returns_series
-
 def calculate_metrics(daily_returns_series, rf_rate_annual=0.10):
     total_ret = (1 + daily_returns_series).prod() - 1
     n_years = len(daily_returns_series) / 12
@@ -237,6 +239,10 @@ with st.sidebar:
     
     rebalance_freq = st.selectbox("Rebalanceamento", ["Mensal", "Anual"])
     rf_rate = st.number_input("Taxa Livre de Risco Anual (%)", value=10.0, step=0.5) / 100
+
+    # Na seção da Sidebar, após o RF Rate:
+    aporte_mensal = st.number_input("Aporte Mensal (R$)", value=1000.0, step=100.0)
+    investimento_inicial = st.number_input("Investimento Inicial (R$)", value=10000.0, step=1000.0)
 
     st.markdown("---")
     st.header("📦 Seleção de Ativos")
@@ -308,7 +314,14 @@ weights_dict = {
 if master_df.empty:
     st.error("Dados insuficientes para o período ou ativos selecionados.")
 else:
-    portfolio_equity, portfolio_ret = calculate_portfolio_performance(master_df, weights_dict, rebalance_freq)
+    # Substitua a chamada antiga por esta:
+    portfolio_equity, portfolio_ret = calculate_portfolio_performance(
+        master_df, 
+        weights_dict, 
+        initial_cap=investimento_inicial, 
+        monthly_contribution=aporte_mensal,
+        rebalance_freq=rebalance_freq
+    )
     
     if portfolio_ret is not None:
         cagr, vol, sharpe, max_dd, tot_ret = calculate_metrics(portfolio_ret, rf_rate)
