@@ -7,9 +7,58 @@ import plotly.express as px
 from datetime import datetime
 
 # ==========================================
+# 0. CONFIGURAÇÃO DA PÁGINA
+# ==========================================
+st.set_page_config(
+    page_title="Asset Allocator Pro - Style Mais Retorno",
+    layout="wide",
+    page_icon="📈",
+    initial_sidebar_state="expanded"
+)
+
+# CSS Customizado estilo "Financial Dashboard"
+st.markdown("""
+<style>
+    .metric-card {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        text-align: center;
+    }
+    .metric-value {
+        font-size: 24px;
+        font-weight: bold;
+        color: #2c3e50;
+    }
+    .metric-label {
+        font-size: 14px;
+        color: #7f8c8d;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 24px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: #f8f9fa;
+        border-radius: 4px 4px 0px 0px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #ffffff;
+        border-bottom: 2px solid #4CAF50;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ==========================================
 # 1. DADOS HARDCODED (FUNDOS ATIVOS)
 # ==========================================
 def get_hardcoded_funds():
+    # (Mantendo os mesmos dados do seu código original)
     tarpon_returns = {
         '2018-01': 0.0518, '2018-02': 0.0018, '2018-03': 0.0337, '2018-04': -0.0224, '2018-05': -0.1091,
         '2018-06': -0.0884, '2018-07': 0.0849, '2018-08': -0.0347, '2018-09': -0.0189, '2018-10': 0.2337,
@@ -32,7 +81,6 @@ def get_hardcoded_funds():
         '2025-07': -0.0560, '2025-08': 0.0348, '2025-09': 0.0005, '2025-10': 0.0179, '2025-11': 0.0966,
         '2025-12': 0.0112
     }
-
     absolute_returns = {
         '2018-12': 0.0262, '2019-01': 0.1408, '2019-02': 0.0436, '2019-03': 0.0365, '2019-04': 0.0325,
         '2019-05': 0.0276, '2019-06': 0.0519, '2019-07': 0.0634, '2019-08': 0.0237, '2019-09': 0.0163,
@@ -52,7 +100,6 @@ def get_hardcoded_funds():
         '2025-03': 0.0312, '2025-04': 0.0608, '2025-05': 0.0866, '2025-06': 0.0010, '2025-07': -0.0305,
         '2025-08': 0.0576, '2025-09': 0.0532, '2025-10': 0.0047, '2025-11': 0.0779, '2025-12': -0.0207
     }
-
     sparta_returns = {
         '2018-09': 0.0037, '2018-10': 0.0049, '2018-11': 0.0066, '2018-12': 0.0058, '2019-01': 0.0073,
         '2019-02': 0.0075, '2019-03': 0.0066, '2019-04': 0.0060, '2019-05': 0.0070, '2019-06': 0.0062,
@@ -73,19 +120,16 @@ def get_hardcoded_funds():
         '2025-05': 0.0107, '2025-06': 0.0157, '2025-07': 0.0147, '2025-08': 0.0180, '2025-09': 0.0211,
         '2025-10': 0.0060, '2025-11': 0.0103, '2025-12': 0.0095
     }
-
     df = pd.DataFrame({
         'Tarpon GT': pd.Series(tarpon_returns),
         'Absolute Pace': pd.Series(absolute_returns),
         'Sparta Infra': pd.Series(sparta_returns)
     })
-
-    # Converter índice string 'YYYY-MM' para datetime (final do mês)
     df.index = pd.to_datetime(df.index).to_period('M').to_timestamp('M')
     return df
 
 # ==========================================
-# 2. FUNÇÕES DE DADOS (YFINANCE) - CORRIGIDA
+# 2. FUNÇÕES DE DADOS (YFINANCE)
 # ==========================================
 @st.cache_data
 def get_market_data(tickers, start_date, end_date):
@@ -95,71 +139,71 @@ def get_market_data(tickers, start_date, end_date):
     processed_tickers = []
     for t in tickers:
         t = t.strip().upper()
-        # Adiciona .SA se for ação brasileira e não tiver sufixo
         if "." not in t and any(char.isdigit() for char in t): 
             processed_tickers.append(f"{t}.SA")
         else:
             processed_tickers.append(t)
             
     try:
-        # Baixa os dados sem tentar acessar ['Adj Close'] imediatamente
         data = yf.download(processed_tickers, start=start_date, end=end_date, progress=False)
-        
-        if data.empty:
-            return pd.DataFrame()
+        if data.empty: return pd.DataFrame()
 
-        # Verifica se 'Adj Close' existe. Se não, tenta 'Close'.
-        # O yfinance pode retornar MultiIndex. Tratamos isso aqui.
         if 'Adj Close' in data.columns:
             prices = data['Adj Close']
         elif 'Close' in data.columns:
             prices = data['Close']
         else:
-            # Caso extremo: tenta pegar pelo nível se for MultiIndex
-            try:
-                prices = data.xs('Adj Close', level=0, axis=1)
-            except KeyError:
-                prices = data.xs('Close', level=0, axis=1)
+            try: prices = data.xs('Adj Close', level=0, axis=1)
+            except KeyError: prices = data.xs('Close', level=0, axis=1)
         
-        # Se baixou apenas 1 ticker, o pandas pode retornar Series em vez de DataFrame
         if isinstance(prices, pd.Series):
             prices = prices.to_frame(name=processed_tickers[0])
             
-        # Garante que as colunas correspondam aos tickers limpos (remove o .SA para visualização)
-        # Se for MultiIndex de colunas, achatamos ou limpamos
         if isinstance(prices.columns, pd.MultiIndex):
              prices.columns = prices.columns.get_level_values(-1)
 
-        # Resample Mensal
         monthly_prices = prices.resample('ME').last() 
         returns = monthly_prices.pct_change()
-        
-        # Limpa os nomes das colunas (.SA)
         returns.columns = [str(c).replace('.SA', '') for c in returns.columns]
         
         return returns
-
     except Exception as e:
-        # Mostra o erro no Streamlit para debug, se necessário
-        st.error(f"Detalhe do erro ao baixar dados: {e}")
+        st.error(f"Erro no download: {e}")
         return pd.DataFrame()
 
+@st.cache_data
+def get_benchmark_data(start_date, end_date):
+    """Baixa o Ibovespa (^BVSP) como benchmark de mercado."""
+    try:
+        # Ibovespa
+        ibov = yf.download("^BVSP", start=start_date, end=end_date, progress=False)['Adj Close']
+        ibov = ibov.resample('ME').last().pct_change()
+        if isinstance(ibov, pd.DataFrame):
+             ibov = ibov.iloc[:, 0]
+        ibov.name = "Ibovespa"
+        return ibov
+    except:
+        return pd.Series()
+
 # ==========================================
-# 3. LÓGICA DE BACKTEST E MÉTRICAS
+# 3. LÓGICA DE CÁLCULO
 # ==========================================
-def calculate_portfolio_performance(returns_df, weights, initial_cap=10000, monthly_contribution=1000, rebalance_freq='Mensal'):
+def calculate_portfolio_performance(returns_df, weights, initial_cap, monthly_contribution, rebalance_freq):
     returns_df = returns_df.dropna()
     available_assets = [c for c in returns_df.columns if c in weights and weights[c] > 0]
     
-    if not available_assets:
-        return None, None
+    if not available_assets: return None, None, None
 
     active_weights = np.array([weights[c] for c in available_assets])
     active_weights = active_weights / active_weights.sum() 
     
-    # Iniciamos com o capital inicial
-    portfolio_value = [initial_cap]
+    # 1. Performance Pura (Cota Base 100) - Sem aportes externos
+    portfolio_pure_idx = [100.0]
     monthly_returns = []
+    
+    # 2. Performance com Aportes (Patrimônio)
+    portfolio_wealth = [initial_cap]
+    
     current_weights = active_weights.copy()
     dates = returns_df.index
     asset_returns_np = returns_df[available_assets].values
@@ -167,142 +211,132 @@ def calculate_portfolio_performance(returns_df, weights, initial_cap=10000, mont
     for i in range(len(dates)):
         r_t = asset_returns_np[i]
         
-        # 1. Rentabiliza o saldo do mês anterior
+        # Retorno do mês (weighted average)
         port_ret = np.dot(current_weights, r_t)
         monthly_returns.append(port_ret)
         
-        # 2. Novo valor = (Valor Anterior * Rentabilidade) + Aporte
-        new_value = (portfolio_value[-1] * (1 + port_ret)) + monthly_contribution
-        portfolio_value.append(new_value)
+        # Atualiza Cota (Base 100)
+        new_idx = portfolio_pure_idx[-1] * (1 + port_ret)
+        portfolio_pure_idx.append(new_idx)
         
-        # 3. Atualiza pesos pela variação dos ativos
+        # Atualiza Patrimônio (Com aporte)
+        new_wealth = (portfolio_wealth[-1] * (1 + port_ret)) + monthly_contribution
+        portfolio_wealth.append(new_wealth)
+        
+        # Drift dos pesos
         current_weights = current_weights * (1 + r_t) / (1 + port_ret)
         
         # Rebalanceamento
         is_rebalance_time = (rebalance_freq == 'Mensal') or \
                             (rebalance_freq == 'Anual' and dates[i].month == 12)
-            
         if is_rebalance_time:
             current_weights = active_weights.copy()
             
-    # O portfolio_value terá len(dates)+1, removemos o primeiro (que é apenas o inicial) 
-    # ou ajustamos o índice para bater com as datas
-    portfolio_series = pd.Series(portfolio_value[1:], index=dates)
+    portfolio_pure_series = pd.Series(portfolio_pure_idx[1:], index=dates)
+    portfolio_wealth_series = pd.Series(portfolio_wealth[1:], index=dates)
     monthly_returns_series = pd.Series(monthly_returns, index=dates)
+    monthly_returns_series.name = "Portfólio"
     
-    return portfolio_series, monthly_returns_series
-def calculate_metrics(daily_returns_series, rf_rate_annual=0.10):
-    total_ret = (1 + daily_returns_series).prod() - 1
-    n_years = len(daily_returns_series) / 12
-    cagr = (1 + total_ret) ** (1/n_years) - 1 if n_years > 0 else 0
-    vol = daily_returns_series.std() * np.sqrt(12)
+    return portfolio_pure_series, portfolio_wealth_series, monthly_returns_series
+
+def create_monthly_heatmap(returns_series):
+    """Cria tabela estilo Mais Retorno (Ano x Mês)."""
+    df_ret = returns_series.to_frame(name='Retorno')
+    df_ret['Ano'] = df_ret.index.year
+    df_ret['Mes'] = df_ret.index.month
     
-    rf_monthly = (1 + rf_rate_annual)**(1/12) - 1
-    excess_ret = daily_returns_series - rf_monthly
-    sharpe = (excess_ret.mean() / daily_returns_series.std()) * np.sqrt(12) if daily_returns_series.std() != 0 else 0
+    pivot = df_ret.pivot(index='Ano', columns='Mes', values='Retorno')
     
-    cum_returns = (1 + daily_returns_series).cumprod()
-    peak = cum_returns.cummax()
-    drawdown = (cum_returns - peak) / peak
-    max_dd = drawdown.min()
+    # Adicionar acumulado do ano
+    pivot['YTD'] = ((1 + pivot.fillna(0)).prod(axis=1) - 1)
     
-    return cagr, vol, sharpe, max_dd, total_ret
+    # Mapa de meses numérico para nome curto
+    month_map = {1: 'Jan', 2: 'Fev', 3: 'Mar', 4: 'Abr', 5: 'Mai', 6: 'Jun', 
+                 7: 'Jul', 8: 'Ago', 9: 'Set', 10: 'Out', 11: 'Nov', 12: 'Dez'}
+    pivot.rename(columns=month_map, inplace=True)
+    
+    return pivot
 
 # ==========================================
-# 4. INTERFACE STREAMLIT
+# 4. INTERFACE
 # ==========================================
-st.set_page_config(page_title="Asset Allocator Pro", layout="wide", page_icon="📈")
-
-st.markdown("""
-<style>
-    .metric-card {background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #4CAF50;}
-    h1 {color: #2c3e50;}
-    h3 {color: #34495e;}
-</style>
-""", unsafe_allow_html=True)
-
-st.title("📊 Backtest Institucional Multiclasse")
-st.markdown("Ferramenta de alocação de ativos e análise de risco (Ações, FIIs, ETFs e Fundos Ativos).")
-
 with st.sidebar:
-    st.header("⚙️ Configurações de Backtest")
-    
-    # --- CORREÇÃO AQUI ---
+    st.header("⚙️ Parâmetros")
     min_date = datetime(2018, 1, 1)
-    # Define a data máxima como HOJE para evitar erro com o padrão datetime.today()
     max_date = datetime.today()
     
     col_d1, col_d2 = st.columns(2)
     start_date = col_d1.date_input("Início", min_date, min_value=min_date, max_value=max_date)
-    # O valor padrão 'value' agora respeita o limite 'max_value' que é hoje
     end_date = col_d2.date_input("Fim", max_date, min_value=min_date, max_value=max_date)
     
     rebalance_freq = st.selectbox("Rebalanceamento", ["Mensal", "Anual"])
-    rf_rate = st.number_input("Taxa Livre de Risco Anual (%)", value=10.0, step=0.5) / 100
+    rf_rate_annual = st.number_input("Taxa CDI/Livre de Risco (% a.a.)", value=10.0, step=0.5)
+    rf_rate_monthly = (1 + rf_rate_annual/100)**(1/12) - 1
 
-    # Na seção da Sidebar, após o RF Rate:
-    aporte_mensal = st.number_input("Aporte Mensal (R$)", value=1000.0, step=100.0)
-    investimento_inicial = st.number_input("Investimento Inicial (R$)", value=10000.0, step=1000.0)
+    aporte_mensal = st.number_input("Aporte Mensal (R$)", value=2000.0, step=100.0)
+    investimento_inicial = st.number_input("Investimento Inicial (R$)", value=50000.0, step=1000.0)
 
     st.markdown("---")
-    st.header("📦 Seleção de Ativos")
+    st.subheader("📦 Composição da Carteira")
     
-    default_stocks = "AGRO3, B3SA3, BBAS3, BBSE3, BPAC11, CMIG3, EGIE3, ITUB3, PRIO3, PSSA3, SAPR4, SBSP3, TAEE3, TOTS3, VIVT3, WEGE3"
-    default_fiis = "ALZR11, BRCO11, BTLG11, HGLG11, HGRE11, HGRU11, KNCR11, KNRI11, LVBI11, MXRF11, PMLL11, TRXF11, VILG11, VISC11, XPLG11, XPML11"
-    default_etfs = "GPUS11, VWRA11"
+    # Inputs com valores padrão
+    default_stocks = "BBAS3, ITUB4, VALE3, WEGE3, PETR4, PRIO3, RENT3, LREN3"
+    default_fiis = "HGLG11, KNRI11, MXRF11, XPLG11, VISC11"
+    default_etfs = "IVVB11, SMAL11"
     
-    stocks_input = st.text_area("Ações (separadas por vírgula)", default_stocks)
-    fiis_input = st.text_area("FIIs (separadas por vírgula)", default_fiis)
-    etfs_input = st.text_area("ETFs (separadas por vírgula)", default_etfs)
+    with st.expander("Selecionar Ativos", expanded=False):
+        stocks_input = st.text_area("Ações BR", default_stocks)
+        fiis_input = st.text_area("FIIs", default_fiis)
+        etfs_input = st.text_area("ETFs", default_etfs)
     
-    st.markdown("---")
-    st.header("⚖️ Alocação de Pesos (%)")
-    st.info("A soma deve ser 100%. Se diferir, será normalizado.")
+    st.markdown("### Pesos (%)")
+    w_stocks = st.slider("Ações", 0, 100, 25)
+    w_fiis = st.slider("FIIs", 0, 100, 15)
+    w_etfs = st.slider("ETFs", 0, 100, 20)
+    w_tarpon = st.number_input("Fundo Tarpon", 0, 100, 20)
+    w_absolute = st.number_input("Fundo Absolute", 0, 100, 10)
+    w_sparta = st.number_input("Fundo Sparta", 0, 100, 10)
     
-    w_stocks = st.slider("Carteira Ações", 0, 100, 10)
-    w_fiis = st.slider("Carteira FIIs", 0, 100, 5)
-    w_etfs = st.slider("Carteira ETFs", 0, 100, 30)
-    w_tarpon = st.number_input("Tarpon GT Master", 0, 100, 30)
-    w_absolute = st.number_input("Absolute Pace", 0, 100, 20)
-    w_sparta = st.number_input("Sparta Infra", 0, 100, 5)
-    
-    total_weight = w_stocks + w_fiis + w_etfs + w_tarpon + w_absolute + w_sparta
-    if total_weight != 100:
-        st.warning(f"Soma atual: {total_weight}%. Será normalizado para 100%.")
+    total_w = w_stocks + w_fiis + w_etfs + w_tarpon + w_absolute + w_sparta
+    if total_w != 100:
+        st.warning(f"Total: {total_w}%. Será normalizado.")
 
-# --- PROCESSAMENTO ---
-df_funds = get_hardcoded_funds()
-
+# --- DADOS ---
 stock_list = [x.strip() for x in stocks_input.split(',') if x.strip()]
 fii_list = [x.strip() for x in fiis_input.split(',') if x.strip()]
 etf_list = [x.strip() for x in etfs_input.split(',') if x.strip()]
 
-with st.spinner('Baixando dados de mercado e consolidando...'):
+df_funds = get_hardcoded_funds()
+
+with st.spinner('Consolidando dados de mercado...'):
     df_stocks = get_market_data(stock_list, start_date, end_date)
     df_fiis = get_market_data(fii_list, start_date, end_date)
     df_etfs = get_market_data(etf_list, start_date, end_date)
+    ibov_ret = get_benchmark_data(start_date, end_date)
 
-consolidated_returns = pd.DataFrame(index=df_funds.index)
-
+# Consolidar Master DF
 all_dates = df_funds.index.union(df_stocks.index).union(df_fiis.index).union(df_etfs.index)
+if not ibov_ret.empty:
+    all_dates = all_dates.union(ibov_ret.index)
 all_dates = all_dates.sort_values()
 
 master_df = pd.DataFrame(index=all_dates)
 
+# Preencher classes de ativos
 if not df_stocks.empty: master_df['Ações Consolidadas'] = df_stocks.mean(axis=1)
 if not df_fiis.empty: master_df['FIIs Consolidados'] = df_fiis.mean(axis=1)
 if not df_etfs.empty: master_df['ETFs Consolidados'] = df_etfs.mean(axis=1)
 
-# Usamos reindex para garantir que os fundos entrem mesmo se o index do master for maior
 master_df['Tarpon GT'] = df_funds['Tarpon GT'].reindex(master_df.index)
 master_df['Absolute Pace'] = df_funds['Absolute Pace'].reindex(master_df.index)
 master_df['Sparta Infra'] = df_funds['Sparta Infra'].reindex(master_df.index)
 
-# Filtragem de data
+# Filtrar datas
 mask = (master_df.index >= pd.to_datetime(start_date)) & (master_df.index <= pd.to_datetime(end_date))
-master_df = master_df.loc[mask].dropna()
+master_df = master_df.loc[mask].dropna(how='all').fillna(0) # Fillna 0 assume ret 0 se sem dados (cuidado)
+ibov_ret = ibov_ret.reindex(master_df.index).fillna(0)
 
-weights_dict = {
+weights = {
     'Ações Consolidadas': w_stocks,
     'FIIs Consolidados': w_fiis,
     'ETFs Consolidados': w_etfs,
@@ -311,71 +345,137 @@ weights_dict = {
     'Sparta Infra': w_sparta
 }
 
-if master_df.empty:
-    st.error("Dados insuficientes para o período ou ativos selecionados.")
-else:
-    # Substitua a chamada antiga por esta:
-    portfolio_equity, portfolio_ret = calculate_portfolio_performance(
-        master_df, 
-        weights_dict, 
-        initial_cap=investimento_inicial, 
-        monthly_contribution=aporte_mensal,
-        rebalance_freq=rebalance_freq
-    )
+# CALCULAR
+port_pure, port_wealth, port_ret = calculate_portfolio_performance(
+    master_df, weights, investimento_inicial, aporte_mensal, rebalance_freq
+)
+
+if port_ret is not None:
+    # Gerar Benchmarks Acumulados
+    cdi_ret_series = pd.Series(rf_rate_monthly, index=port_ret.index)
+    cdi_accum = (1 + cdi_ret_series).cumprod() * 100
+    ibov_accum = (1 + ibov_ret).cumprod() * 100
     
-    if portfolio_ret is not None:
-        cagr, vol, sharpe, max_dd, tot_ret = calculate_metrics(portfolio_ret, rf_rate)
+    # Métricas Gerais
+    total_ret = (port_pure.iloc[-1] / 100) - 1
+    years = len(port_ret) / 12
+    cagr = (1 + total_ret) ** (1/years) - 1
+    vol = port_ret.std() * np.sqrt(12)
+    sharpe = (port_ret.mean() - rf_rate_monthly) / port_ret.std() * np.sqrt(12)
+    
+    # Drawdown
+    cum_ret = (1 + port_ret).cumprod()
+    peak = cum_ret.cummax()
+    dd_series = (cum_ret - peak) / peak
+    max_dd = dd_series.min()
 
-        st.markdown("### 📈 Performance Consolidada")
-        kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+    # Layout Principal
+    st.title("📊 Relatório de Performance")
+    
+    # --- HEADER KPI (Estilo Cards) ---
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.markdown(f"<div class='metric-card'><div class='metric-value'>{total_ret:.1%}</div><div class='metric-label'>Retorno Total</div></div>", unsafe_allow_html=True)
+    col2.markdown(f"<div class='metric-card'><div class='metric-value'>{cagr:.1%}</div><div class='metric-label'>CAGR (a.a.)</div></div>", unsafe_allow_html=True)
+    col3.markdown(f"<div class='metric-card'><div class='metric-value'>{vol:.1%}</div><div class='metric-label'>Volatilidade</div></div>", unsafe_allow_html=True)
+    col4.markdown(f"<div class='metric-card'><div class='metric-value'>{sharpe:.2f}</div><div class='metric-label'>Sharpe</div></div>", unsafe_allow_html=True)
+    col5.markdown(f"<div class='metric-card'><div class='metric-value' style='color:red'>{max_dd:.1%}</div><div class='metric-label'>Max Drawdown</div></div>", unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- TABS DE ANÁLISE ---
+    tab_perf, tab_risk, tab_month, tab_patr = st.tabs([
+        "📈 Rentabilidade Comparativa", 
+        "🛡️ Análise de Risco", 
+        "📅 Retornos Mensais",
+        "💰 Evolução Patrimonial"
+    ])
+    
+    with tab_perf:
+        st.subheader("Evolução (Base 100)")
+        df_chart = pd.DataFrame({
+            'Seu Portfólio': port_pure,
+            'Ibovespa': ibov_accum,
+            'CDI (Teórico)': cdi_accum
+        })
         
-        kpi1.metric("Retorno Total", f"{tot_ret:.1%}")
-        kpi2.metric("CAGR", f"{cagr:.1%}")
-        kpi3.metric("Volatilidade (a.a.)", f"{vol:.1%}")
-        kpi4.metric(f"Sharpe (Rf={rf_rate:.0%})", f"{sharpe:.2f}")
-        kpi5.metric("Max Drawdown", f"{max_dd:.1%}", delta_color="inverse")
+        fig = px.line(df_chart, title="Comparativo de Rentabilidade Acumulada")
+        fig.update_layout(
+            template="plotly_white", 
+            xaxis_title="", 
+            yaxis_title="Índice (Base 100)",
+            legend=dict(orientation="h", y=1.02, x=0.5, xanchor="center"),
+            hovermode="x unified"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        
+        st.info("Nota: O gráfico acima mostra a valorização pura das cotas (iniciando em 100), ignorando aportes, para permitir comparação justa com índices.")
 
-        st.markdown("---")
-
-        tab1, tab2, tab3 = st.tabs(["Evolução Patrimonial", "Drawdown & Anual", "Correlações"])
-
-        with tab1:
-            st.subheader("Curva de Equity (Base 100)")
-            fig_equity = px.line(portfolio_equity, title="Crescimento do Patrimônio")
-            fig_equity.update_layout(xaxis_title="Data", yaxis_title="Valor Acumulado", template="plotly_white")
-            st.plotly_chart(fig_equity, use_container_width=True)
-
-        with tab2:
-            col_g1, col_g2 = st.columns(2)
+    with tab_risk:
+        col_r1, col_r2 = st.columns(2)
+        
+        with col_r1:
+            st.markdown("**Drawdown Submarino**")
+            fig_dd = px.area(dd_series, title="")
+            fig_dd.update_traces(fillcolor='rgba(255,0,0,0.2)', line_color='red')
+            fig_dd.update_layout(template="plotly_white", yaxis_tickformat=".1%", showlegend=False)
+            st.plotly_chart(fig_dd, use_container_width=True)
             
-            with col_g1:
-                st.subheader("Drawdown Histórico")
-                cum_ret = (1 + portfolio_ret).cumprod()
-                peak = cum_ret.cummax()
-                dd_series = (cum_ret - peak) / peak
-                
-                fig_dd = px.area(dd_series, title="Drawdown Submarino")
-                fig_dd.update_traces(fillcolor='red', line_color='red')
-                fig_dd.update_yaxes(tickformat=".1%")
-                st.plotly_chart(fig_dd, use_container_width=True)
-                
-            with col_g2:
-                st.subheader("Retornos Anuais")
-                annual_ret = portfolio_ret.resample('YE').apply(lambda x: (1+x).prod() -1)
-                annual_ret.index = annual_ret.index.year.astype(str)
-                
-                fig_bar = px.bar(annual_ret, title="Retorno por Ano Calendário", text_auto='.1%')
-                fig_bar.update_layout(showlegend=False)
-                st.plotly_chart(fig_bar, use_container_width=True)
+        with col_r2:
+            st.markdown("**Volatilidade Móvel (12 Meses)**")
+            rolling_vol = port_ret.rolling(12).std() * np.sqrt(12)
+            fig_vol = px.line(rolling_vol, title="")
+            fig_vol.update_traces(line_color='#FF9800')
+            fig_vol.update_layout(template="plotly_white", yaxis_tickformat=".1%", showlegend=False)
+            st.plotly_chart(fig_vol, use_container_width=True)
 
-        with tab3:
-            st.subheader("Heatmap de Correlação")
-            corr_matrix = master_df.corr()
-            fig_corr = px.imshow(corr_matrix, text_auto=".2f", aspect="auto", color_continuous_scale="RdBu_r")
-            st.plotly_chart(fig_corr, use_container_width=True)
+        # Estatísticas Adicionais
+        st.markdown("### Estatísticas Detalhadas")
+        stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
+        
+        months_pos = (port_ret > 0).sum()
+        months_neg = (port_ret < 0).sum()
+        best_month = port_ret.max()
+        worst_month = port_ret.min()
+        
+        stat_col1.metric("Meses Positivos", f"{months_pos} ({months_pos/len(port_ret):.0%})")
+        stat_col2.metric("Meses Negativos", f"{months_neg} ({months_neg/len(port_ret):.0%})")
+        stat_col3.metric("Melhor Mês", f"{best_month:.2%}")
+        stat_col4.metric("Pior Mês", f"{worst_month:.2%}", delta_color="inverse")
+
+    with tab_month:
+        st.subheader("Tabela de Rentabilidade (Heatmap)")
+        heatmap_data = create_monthly_heatmap(port_ret)
+        
+        # Colorir dataframe (Estilo Excel)
+        st.dataframe(
+            heatmap_data.style.format("{:.2%}")
+            .background_gradient(cmap='RdYlGn', vmin=-0.05, vmax=0.05, axis=None)
+            .highlight_null(color='white'),
+            use_container_width=True,
+            height=400
+        )
+        
+        st.caption("YTD: Rentabilidade acumulada no ano corrente.")
+
+    with tab_patr:
+        st.subheader("Evolução do Saldo em Conta")
+        
+        col_p1, col_p2 = st.columns([3, 1])
+        with col_p1:
+            fig_wealth = px.area(port_wealth, title="Crescimento Patrimonial (Cotas + Aportes)")
+            fig_wealth.update_traces(fillcolor='rgba(76, 175, 80, 0.3)', line_color='#4CAF50')
+            fig_wealth.update_layout(template="plotly_white", yaxis_title="Saldo (R$)")
+            st.plotly_chart(fig_wealth, use_container_width=True)
+        
+        with col_p2:
+            final_val = port_wealth.iloc[-1]
+            total_invested = investimento_inicial + (aporte_mensal * len(port_ret))
+            profit_loss = final_val - total_invested
             
-        st.sidebar.markdown("---")
-        csv = master_df.to_csv().encode('utf-8')
-        st.sidebar.download_button("📥 Baixar Dados Consolidados", data=csv, file_name="backtest_data.csv", mime="text/csv")
-    else:
-        st.error("Erro ao calcular portfólio. Verifique se há dados para os ativos selecionados.")
+            st.metric("Saldo Final", f"R$ {final_val:,.2f}")
+            st.metric("Total Investido", f"R$ {total_invested:,.2f}")
+            st.metric("Lucro/Prejuízo", f"R$ {profit_loss:,.2f}", 
+                      delta=f"{(final_val/total_invested - 1):.1%}")
+
+else:
+    st.info("👈 Configure os parâmetros na barra lateral e aguarde o processamento.")
