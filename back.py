@@ -85,7 +85,7 @@ def get_hardcoded_funds():
     return df
 
 # ==========================================
-# 2. FUNÇÕES DE DADOS (YFINANCE)
+# 2. FUNÇÕES DE DADOS (YFINANCE) - CORRIGIDA
 # ==========================================
 @st.cache_data
 def get_market_data(tickers, start_date, end_date):
@@ -95,26 +95,53 @@ def get_market_data(tickers, start_date, end_date):
     processed_tickers = []
     for t in tickers:
         t = t.strip().upper()
+        # Adiciona .SA se for ação brasileira e não tiver sufixo
         if "." not in t and any(char.isdigit() for char in t): 
             processed_tickers.append(f"{t}.SA")
         else:
             processed_tickers.append(t)
             
     try:
-        # yf.download pode retornar erro se end_date for futuro distante sem dados, mas geralmente ok
-        prices = yf.download(processed_tickers, start=start_date, end=end_date, progress=False)['Adj Close']
+        # Baixa os dados sem tentar acessar ['Adj Close'] imediatamente
+        data = yf.download(processed_tickers, start=start_date, end=end_date, progress=False)
         
+        if data.empty:
+            return pd.DataFrame()
+
+        # Verifica se 'Adj Close' existe. Se não, tenta 'Close'.
+        # O yfinance pode retornar MultiIndex. Tratamos isso aqui.
+        if 'Adj Close' in data.columns:
+            prices = data['Adj Close']
+        elif 'Close' in data.columns:
+            prices = data['Close']
+        else:
+            # Caso extremo: tenta pegar pelo nível se for MultiIndex
+            try:
+                prices = data.xs('Adj Close', level=0, axis=1)
+            except KeyError:
+                prices = data.xs('Close', level=0, axis=1)
+        
+        # Se baixou apenas 1 ticker, o pandas pode retornar Series em vez de DataFrame
         if isinstance(prices, pd.Series):
             prices = prices.to_frame(name=processed_tickers[0])
             
+        # Garante que as colunas correspondam aos tickers limpos (remove o .SA para visualização)
+        # Se for MultiIndex de colunas, achatamos ou limpamos
+        if isinstance(prices.columns, pd.MultiIndex):
+             prices.columns = prices.columns.get_level_values(-1)
+
+        # Resample Mensal
         monthly_prices = prices.resample('ME').last() 
         returns = monthly_prices.pct_change()
         
-        returns.columns = [c.replace('.SA', '') for c in returns.columns]
+        # Limpa os nomes das colunas (.SA)
+        returns.columns = [str(c).replace('.SA', '') for c in returns.columns]
         
         return returns
+
     except Exception as e:
-        st.error(f"Erro ao baixar dados: {e}")
+        # Mostra o erro no Streamlit para debug, se necessário
+        st.error(f"Detalhe do erro ao baixar dados: {e}")
         return pd.DataFrame()
 
 # ==========================================
