@@ -266,4 +266,3 @@ if st.button('Executar Backtest'):
 
 # Justification for returns: Simple returns are used as they accurately represent the multiplicative nature of portfolio growth over time.
 # Log returns could be used for additive properties in volatility calculations, but simple returns are standard for backtesting equity curves.
-```
