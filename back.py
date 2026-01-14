@@ -72,58 +72,43 @@ st.markdown("""
 
 @st.cache_data(ttl=3600)
 def get_brapi_fund_data(cnpjs_dict, token):
-    """
-    Busca dados de fundos na BRAPI via CNPJ e calcula retorno mensal.
-    """
     api_returns = pd.DataFrame()
 
     for name, cnpj_raw in cnpjs_dict.items():
-        cnpj_clean = "".join(filter(str.isdigit(), cnpj_raw))
+        # 1. Correção da limpeza do CNPJ (Erro do log)
+        cnpj_clean = "".join([c for c in cnpj_raw if c.isdigit()])
         
-        # Endpoint v2 para detalhes de fundos
+        # 2. Endpoint correto para fundos (plural 'funds')
         url = f"https://brapi.dev/api/v2/funds/{cnpj_clean}"
-        params = {
-            'token': token,
-            'range': '5y', 
-            'interval': '1mo' # Tenta trazer direto mensal se a API suportar
-        }
+        params = {'token': token, 'range': '5y'}
         
         try:
             response = requests.get(url, params=params, timeout=10)
-            
             if response.status_code == 200:
                 data = response.json()
                 
-                # A BRAPI para fundos geralmente retorna uma lista em 'funds'
-                fund_info = data.get('funds', [{}])[0]
-                history = fund_info.get('equityValueHistory', []) # Chave comum para fundos
-                
-                if not history:
-                    # Tenta fallback para estrutura de ações caso seja um ETF listado
-                    history = fund_info.get('history', [])
-
-                if history:
-                    df_temp = pd.DataFrame(history)
+                # 3. Navegação na estrutura correta da API para fundos
+                if 'funds' in data and len(data['funds']) > 0:
+                    fund_info = data['funds'][0]
+                    # Chave específica para histórico de cotas de fundos
+                    history = fund_info.get('equityValueHistory', [])
                     
-                    # Padronização de colunas (Data e Valor da Cota)
-                    # A BRAPI usa 'dailyEquityValue' ou 'close' para fundos
-                    if 'date' in df_temp.columns:
+                    if history:
+                        df_temp = pd.DataFrame(history)
+                        
+                        # Converte datas (formato ISO comum na BRAPI)
                         df_temp['date'] = pd.to_datetime(df_temp['date'])
                         
-                        # Tenta encontrar a coluna de valor (Cota)
-                        val_col = None
-                        for c in ['dailyEquityValue', 'close', 'adjustedClose']:
-                            if c in df_temp.columns:
-                                val_col = c
-                                break
+                        # Define a coluna de preço (valor da cota)
+                        # Tenta 'dailyEquityValue' (padrão fundos) ou 'close' (fallback)
+                        col_price = 'dailyEquityValue' if 'dailyEquityValue' in df_temp.columns else 'close'
                         
-                        if val_col:
+                        if col_price in df_temp.columns:
                             df_temp.set_index('date', inplace=True)
-                            # Ordena por data para garantir o cálculo do pct_change
                             df_temp = df_temp.sort_index()
                             
-                            # Resample para Mensal (ME = Month End)
-                            monthly_ret = df_temp[val_col].resample('ME').last().pct_change()
+                            # Resample mensal e cálculo de retorno
+                            monthly_ret = df_temp[col_price].resample('ME').last().pct_change()
                             monthly_ret.name = name
                             
                             if api_returns.empty:
@@ -131,13 +116,14 @@ def get_brapi_fund_data(cnpjs_dict, token):
                             else:
                                 api_returns = api_returns.join(monthly_ret, how='outer')
             else:
-                st.error(f"Erro API na busca de {name}: Status {response.status_code}")
+                st.warning(f"A API BRAPI retornou erro {response.status_code} para {name}")
                 
         except Exception as e:
-            st.warning(f"Não foi possível processar {name} via API: {e}")
+            st.error(f"Erro ao processar {name}: {e}")
             continue
             
     return api_returns
+
 
 
 def get_combined_funds_data():
