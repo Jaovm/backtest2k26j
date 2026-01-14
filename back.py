@@ -4,10 +4,11 @@ import numpy as np
 import yfinance as yf
 import plotly.graph_objects as go
 import plotly.express as px
+import requests
 from datetime import datetime
 
 # ==========================================
-# 0. CONFIGURAÇÃO DA PÁGINA
+# 0. CONFIGURAÇÃO DA PÁGINA E CONSTANTES
 # ==========================================
 st.set_page_config(
     page_title="Asset Allocator Pro - Style Mais Retorno",
@@ -16,7 +17,18 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS Customizado estilo "Financial Dashboard"
+# --- CONFIGURAÇÃO BRAPI ---
+BRAPI_TOKEN = "2D29LijXrSGRJAQ7De5bUh"
+
+# Mapeamento Nome no Dashboard -> CNPJ
+FUND_CNPJS = {
+    'Tarpon GT': '22.232.927/0001-90',
+    'Absolute Pace': '32.073.525/0001-43',
+    'SPX Patriot': '15.334.585/0001-53',
+    'Sparta Infra': '30.877.528/0001-04' # Mapeado como Sparta Infra conforme seu script original
+}
+
+# CSS Customizado
 st.markdown("""
 <style>
     .metric-card {
@@ -55,9 +67,71 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 1. DADOS HARDCODED (FUNDOS ATIVOS)
+# 1. DADOS DOS FUNDOS (HÍBRIDO: MANUAL + BRAPI)
 # ==========================================
-def get_hardcoded_funds():
+
+@st.cache_data(ttl=3600) # Cache de 1 hora para não estourar limite da API
+def get_brapi_fund_data(cnpjs_dict, token):
+    """
+    Busca dados de fundos na BRAPI via CNPJ e calcula retorno mensal.
+    """
+    api_returns = pd.DataFrame()
+
+    for name, cnpj_raw in cnpjs_dict.items():
+        # Limpar CNPJ (apenas números)
+        cnpj_clean = "".join(filter(str.isdigit, cnpj_raw))
+        
+        # Endpoint de Fundos da BRAPI (Estrutura padrão)
+        url = f"https://brapi.dev/api/v2/fund/{cnpj_clean}"
+        params = {
+            'token': token,
+            'range': '5y', # Busca 5 anos para garantir overlap e pegar 2026+
+        }
+        
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Navegar no JSON para achar a time series (geralmente em 'history' ou 'results')
+                # Adaptando para estrutura comum da BRAPI/CVM
+                if 'results' in data and len(data['results']) > 0:
+                    history = data['results'][0].get('history', [])
+                elif 'history' in data:
+                    history = data['history']
+                else:
+                    history = []
+                
+                if history:
+                    # Criar DF temporário
+                    df_temp = pd.DataFrame(history)
+                    
+                    # Garantir colunas de data e cota (adjustedClose ou close)
+                    if 'date' in df_temp.columns and ('adjustedClose' in df_temp.columns or 'close' in df_temp.columns):
+                        df_temp['date'] = pd.to_datetime(df_temp['date'], unit='s' if isinstance(df_temp['date'].iloc[0], int) else None)
+                        col_price = 'adjustedClose' if 'adjustedClose' in df_temp.columns else 'close'
+                        df_temp.set_index('date', inplace=True)
+                        
+                        # Resample para Mensal e calcular retorno
+                        monthly_ret = df_temp[col_price].resample('ME').last().pct_change()
+                        monthly_ret.name = name
+                        
+                        # Merge no DataFrame principal de retornos da API
+                        if api_returns.empty:
+                            api_returns = monthly_ret.to_frame()
+                        else:
+                            api_returns = api_returns.join(monthly_ret, how='outer')
+            else:
+                print(f"Erro API {name}: {response.status_code}")
+                
+        except Exception as e:
+            print(f"Falha ao buscar {name}: {e}")
+            continue
+            
+    return api_returns
+
+def get_combined_funds_data():
+    # --- 1. Dados Hardcoded (Histórico Antigo) ---
     tarpon_returns = {
         '2018-01': 0.0518, '2018-02': 0.0018, '2018-03': 0.0337, '2018-04': -0.0224, '2018-05': -0.1091,
         '2018-06': -0.0884, '2018-07': 0.0849, '2018-08': -0.0347, '2018-09': -0.0189, '2018-10': 0.2337,
@@ -120,7 +194,6 @@ def get_hardcoded_funds():
         '2025-10': 0.0060, '2025-11': 0.0103, '2025-12': 0.0095
     }
     
-    # NOVOS DADOS DO SPX PATRIOT (Extraídos da imagem)
     spx_patriot_returns = {
         '2012-07': 0.0035, '2012-08': 0.0366, '2012-09': 0.0304, '2012-10': 0.0190, '2012-11': 0.0153, '2012-12': 0.0488,
         '2013-01': 0.0222, '2013-02': -0.0096, '2013-03': -0.0045, '2013-04': 0.0086, '2013-05': 0.0114, '2013-06': -0.0514, '2013-07': 0.0113, '2013-08': 0.0070, '2013-09': 0.0261, '2013-10': 0.0291, '2013-11': -0.0087, '2013-12': -0.0202,
@@ -139,14 +212,35 @@ def get_hardcoded_funds():
         '2026-01': 0.0275
     }
 
-    df = pd.DataFrame({
+    df_manual = pd.DataFrame({
         'Tarpon GT': pd.Series(tarpon_returns),
         'Absolute Pace': pd.Series(absolute_returns),
         'Sparta Infra': pd.Series(sparta_returns),
         'SPX Patriot': pd.Series(spx_patriot_returns)
     })
-    df.index = pd.to_datetime(df.index).to_period('M').to_timestamp('M')
-    return df
+    
+    # Padronizar datas manuais
+    df_manual.index = pd.to_datetime(df_manual.index).to_period('M').to_timestamp('M')
+
+    # --- 2. Dados Automatizados (API BRAPI) ---
+    with st.spinner('Atualizando fundos via BRAPI...'):
+        df_api = get_brapi_fund_data(FUND_CNPJS, BRAPI_TOKEN)
+    
+    if not df_api.empty:
+        # Mesclar: Usa dados da API para atualizar/preencher a partir de Jan/2026
+        # A lógica combine_first dá prioridade ao DF que chama (df_api) sobre o argumento (df_manual)
+        # Filtramos a API para garantir que ela só sobrescreva/adicione dados recentes se necessário
+        
+        # Garante alinhamento de índices
+        df_api.index = df_api.index.to_period('M').to_timestamp('M')
+        
+        # Merge inteligente: Prioriza API para dados > 2026, mantém Manual para histórico antigo
+        df_final = df_api.combine_first(df_manual)
+    else:
+        df_final = df_manual
+        st.warning("Não foi possível obter dados atualizados da BRAPI. Usando apenas histórico manual.")
+
+    return df_final
 
 # ==========================================
 # 2. FUNÇÕES DE DADOS (YFINANCE)
@@ -282,7 +376,6 @@ def create_monthly_heatmap(returns_series):
 # ==========================================
 with st.sidebar:
     st.header("⚙️ Parâmetros")
-    # ALTERADO: Min date de 2018 para 2012 para acomodar SPX Patriot
     min_date = datetime(2012, 1, 1)
     max_date = datetime.today()
     
@@ -330,7 +423,8 @@ stock_list = [x.strip() for x in stocks_input.split(',') if x.strip()]
 fii_list = [x.strip() for x in fiis_input.split(',') if x.strip()]
 etf_list = [x.strip() for x in etfs_input.split(',') if x.strip()]
 
-df_funds = get_hardcoded_funds()
+# Chamada da nova função de Fundos (Manual + API)
+df_funds = get_combined_funds_data()
 
 with st.spinner('Consolidando dados de mercado...'):
     df_stocks = get_market_data(stock_list, start_date, end_date)
@@ -351,6 +445,7 @@ if not df_stocks.empty: master_df['Ações Consolidadas'] = df_stocks.mean(axis=
 if not df_fiis.empty: master_df['FIIs Consolidados'] = df_fiis.mean(axis=1)
 if not df_etfs.empty: master_df['ETFs Consolidados'] = df_etfs.mean(axis=1)
 
+# Preencher Fundos (Reindexando para garantir alinhamento de datas)
 master_df['Tarpon GT'] = df_funds['Tarpon GT'].reindex(master_df.index)
 master_df['Absolute Pace'] = df_funds['Absolute Pace'].reindex(master_df.index)
 master_df['Sparta Infra'] = df_funds['Sparta Infra'].reindex(master_df.index)
@@ -358,7 +453,7 @@ master_df['SPX Patriot'] = df_funds['SPX Patriot'].reindex(master_df.index)
 
 # Filtrar datas
 mask = (master_df.index >= pd.to_datetime(start_date)) & (master_df.index <= pd.to_datetime(end_date))
-master_df = master_df.loc[mask].dropna(how='all').fillna(0) # Fillna 0 assume ret 0 se sem dados (cuidado)
+master_df = master_df.loc[mask].dropna(how='all').fillna(0)
 ibov_ret = ibov_ret.reindex(master_df.index).fillna(0)
 
 weights = {
@@ -385,7 +480,12 @@ if port_ret is not None:
     # Métricas Gerais
     total_ret = (port_pure.iloc[-1] / 100) - 1
     years = len(port_ret) / 12
-    cagr = (1 + total_ret) ** (1/years) - 1
+    # Proteção contra divisão por zero se years < 1
+    if years > 0:
+        cagr = (1 + total_ret) ** (1/years) - 1
+    else:
+        cagr = 0
+        
     vol = port_ret.std() * np.sqrt(12)
     sharpe = (port_ret.mean() - rf_rate_monthly) / port_ret.std() * np.sqrt(12)
     
