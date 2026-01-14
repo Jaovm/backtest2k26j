@@ -4,11 +4,10 @@ import numpy as np
 import yfinance as yf
 import plotly.graph_objects as go
 import plotly.express as px
-import requests
 from datetime import datetime
 
 # ==========================================
-# 0. CONFIGURAÇÃO DA PÁGINA E CONSTANTES
+# 0. CONFIGURAÇÃO DA PÁGINA
 # ==========================================
 st.set_page_config(
     page_title="Asset Allocator Pro - Style Mais Retorno",
@@ -17,18 +16,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CONFIGURAÇÃO BRAPI ---
-BRAPI_TOKEN = "2D29LijXrSGRJAQ7De5bUh"
-
-# Mapeamento Nome no Dashboard -> CNPJ
-FUND_CNPJS = {
-    'Tarpon GT': '22.232.927/0001-90',
-    'Absolute Pace': '32.073.525/0001-43',
-    'SPX Patriot': '15.334.585/0001-53',
-    'Sparta Infra': '30.877.528/0001-04' # Mapeado como Sparta Infra conforme seu script original
-}
-
-# CSS Customizado
+# CSS Customizado estilo "Financial Dashboard"
 st.markdown("""
 <style>
     .metric-card {
@@ -67,67 +55,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 1. DADOS DOS FUNDOS (HÍBRIDO: MANUAL + BRAPI)
+# 1. DADOS HARDCODED (FUNDOS ATIVOS)
 # ==========================================
-
-@st.cache_data(ttl=3600)
-def get_brapi_fund_data(cnpjs_dict, token):
-    api_returns = pd.DataFrame()
-
-    for name, cnpj_raw in cnpjs_dict.items():
-        # 1. Correção da limpeza do CNPJ (Erro do log)
-        cnpj_clean = "".join([c for c in cnpj_raw if c.isdigit()])
-        
-        # 2. Endpoint correto para fundos (plural 'funds')
-        url = f"https://brapi.dev/api/v2/funds/{cnpj_clean}"
-        params = {'token': token, 'range': '5y'}
-        
-        try:
-            response = requests.get(url, params=params, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                
-                # 3. Navegação na estrutura correta da API para fundos
-                if 'funds' in data and len(data['funds']) > 0:
-                    fund_info = data['funds'][0]
-                    # Chave específica para histórico de cotas de fundos
-                    history = fund_info.get('equityValueHistory', [])
-                    
-                    if history:
-                        df_temp = pd.DataFrame(history)
-                        
-                        # Converte datas (formato ISO comum na BRAPI)
-                        df_temp['date'] = pd.to_datetime(df_temp['date'])
-                        
-                        # Define a coluna de preço (valor da cota)
-                        # Tenta 'dailyEquityValue' (padrão fundos) ou 'close' (fallback)
-                        col_price = 'dailyEquityValue' if 'dailyEquityValue' in df_temp.columns else 'close'
-                        
-                        if col_price in df_temp.columns:
-                            df_temp.set_index('date', inplace=True)
-                            df_temp = df_temp.sort_index()
-                            
-                            # Resample mensal e cálculo de retorno
-                            monthly_ret = df_temp[col_price].resample('ME').last().pct_change()
-                            monthly_ret.name = name
-                            
-                            if api_returns.empty:
-                                api_returns = monthly_ret.to_frame()
-                            else:
-                                api_returns = api_returns.join(monthly_ret, how='outer')
-            else:
-                st.warning(f"A API BRAPI retornou erro {response.status_code} para {name}")
-                
-        except Exception as e:
-            st.error(f"Erro ao processar {name}: {e}")
-            continue
-            
-    return api_returns
-
-
-
-def get_combined_funds_data():
-    # --- 1. Dados Hardcoded (Histórico Antigo) ---
+def get_hardcoded_funds():
+    # (Mantendo os mesmos dados do seu código original)
     tarpon_returns = {
         '2018-01': 0.0518, '2018-02': 0.0018, '2018-03': 0.0337, '2018-04': -0.0224, '2018-05': -0.1091,
         '2018-06': -0.0884, '2018-07': 0.0849, '2018-08': -0.0347, '2018-09': -0.0189, '2018-10': 0.2337,
@@ -189,54 +120,13 @@ def get_combined_funds_data():
         '2025-05': 0.0107, '2025-06': 0.0157, '2025-07': 0.0147, '2025-08': 0.0180, '2025-09': 0.0211,
         '2025-10': 0.0060, '2025-11': 0.0103, '2025-12': 0.0095
     }
-    
-    spx_patriot_returns = {
-        '2012-07': 0.0035, '2012-08': 0.0366, '2012-09': 0.0304, '2012-10': 0.0190, '2012-11': 0.0153, '2012-12': 0.0488,
-        '2013-01': 0.0222, '2013-02': -0.0096, '2013-03': -0.0045, '2013-04': 0.0086, '2013-05': 0.0114, '2013-06': -0.0514, '2013-07': 0.0113, '2013-08': 0.0070, '2013-09': 0.0261, '2013-10': 0.0291, '2013-11': -0.0087, '2013-12': -0.0202,
-        '2014-01': -0.0381, '2014-02': 0.0015, '2014-03': 0.0345, '2014-04': 0.0302, '2014-05': -0.0131, '2014-06': 0.0214, '2014-07': 0.0219, '2014-08': 0.0722, '2014-09': -0.0984, '2014-10': 0.0245, '2014-11': 0.0180, '2014-12': -0.0663,
-        '2015-01': -0.0822, '2015-02': 0.0940, '2015-03': -0.0036, '2015-04': 0.0653, '2015-05': -0.0441, '2015-06': -0.0055, '2015-07': -0.0172, '2015-08': -0.0602, '2015-09': -0.0144, '2015-10': 0.0209, '2015-11': 0.0101, '2015-12': -0.0162,
-        '2016-01': -0.0219, '2016-02': 0.0456, '2016-03': 0.0914, '2016-04': 0.0806, '2016-05': -0.0320, '2016-06': 0.0652, '2016-07': 0.1174, '2016-08': 0.0362, '2016-09': -0.0011, '2016-10': 0.1101, '2016-11': -0.0902, '2016-12': -0.0009,
-        '2017-01': 0.0968, '2017-02': 0.0391, '2017-03': -0.0105, '2017-04': 0.0034, '2017-05': -0.0377, '2017-06': 0.0039, '2017-07': 0.0527, '2017-08': 0.0691, '2017-09': 0.0566, '2017-10': -0.0010, '2017-11': -0.0291, '2017-12': 0.0624,
-        '2018-01': 0.0921, '2018-02': 0.0034, '2018-03': 0.0432, '2018-04': 0.0073, '2018-05': -0.1071, '2018-06': -0.0364, '2018-07': 0.0556, '2018-08': -0.0187, '2018-09': 0.0202, '2018-10': 0.0738, '2018-11': 0.0347, '2018-12': -0.0012,
-        '2019-01': 0.1134, '2019-02': -0.0180, '2019-03': -0.0079, '2019-04': 0.0065, '2019-05': 0.0174, '2019-06': 0.0418, '2019-07': -0.0026, '2019-08': -0.0001, '2019-09': 0.0117, '2019-10': 0.0214, '2019-11': 0.0062, '2019-12': 0.0899,
-        '2020-01': 0.0093, '2020-02': -0.0773, '2020-03': -0.2696, '2020-04': 0.0787, '2020-05': 0.0530, '2020-06': 0.0683, '2020-07': 0.0804, '2020-08': -0.0280, '2020-09': -0.0442, '2020-10': -0.0346, '2020-11': 0.1295, '2020-12': 0.0968,
-        '2021-01': -0.0210, '2021-02': 0.0030, '2021-03': 0.0616, '2021-04': 0.0365, '2021-05': 0.0445, '2021-06': 0.0193, '2021-07': -0.0461, '2021-08': -0.0282, '2021-09': -0.0487, '2021-10': -0.0870, '2021-11': -0.0267, '2021-12': 0.0559,
-        '2022-01': 0.0635, '2022-02': -0.0296, '2022-03': 0.0597, '2022-04': -0.0777, '2022-05': 0.0220, '2022-06': -0.1011, '2022-07': 0.0517, '2022-08': 0.0904, '2022-09': 0.0081, '2022-10': 0.0835, '2022-11': -0.0675, '2022-12': -0.0235,
-        '2023-01': 0.0478, '2023-02': -0.0525, '2023-03': -0.0166, '2023-04': 0.0291, '2023-05': 0.0632, '2023-06': 0.1091, '2023-07': 0.0328, '2023-08': -0.0560, '2023-09': -0.0037, '2023-10': -0.0312, '2023-11': 0.1274, '2023-12': 0.0598,
-        '2024-01': -0.0509, '2024-02': 0.0207, '2024-03': 0.0181, '2024-04': -0.0566, '2024-05': -0.0120, '2024-06': 0.0079, '2024-07': 0.0362, '2024-08': 0.0365, '2024-09': -0.0352, '2024-10': 0.0063, '2024-11': -0.0284, '2024-12': -0.0348,
-        '2025-01': 0.0652, '2025-02': -0.0172, '2025-03': 0.0537, '2025-04': 0.0914, '2025-05': 0.0697, '2025-06': 0.0192, '2025-07': -0.0491, '2025-08': 0.0978, '2025-09': 0.0368, '2025-10': 0.0154, '2025-11': 0.0687, '2025-12': 0.0126,
-        '2026-01': 0.0275
-    }
-
-    df_manual = pd.DataFrame({
+    df = pd.DataFrame({
         'Tarpon GT': pd.Series(tarpon_returns),
         'Absolute Pace': pd.Series(absolute_returns),
-        'Sparta Infra': pd.Series(sparta_returns),
-        'SPX Patriot': pd.Series(spx_patriot_returns)
+        'Sparta Infra': pd.Series(sparta_returns)
     })
-    
-    # Padronizar datas manuais
-    df_manual.index = pd.to_datetime(df_manual.index).to_period('M').to_timestamp('M')
-
-    # --- 2. Dados Automatizados (API BRAPI) ---
-    with st.spinner('Atualizando fundos via BRAPI...'):
-        df_api = get_brapi_fund_data(FUND_CNPJS, BRAPI_TOKEN)
-    
-    if not df_api.empty:
-        # Mesclar: Usa dados da API para atualizar/preencher a partir de Jan/2026
-        # A lógica combine_first dá prioridade ao DF que chama (df_api) sobre o argumento (df_manual)
-        # Filtramos a API para garantir que ela só sobrescreva/adicione dados recentes se necessário
-        
-        # Garante alinhamento de índices
-        df_api.index = df_api.index.to_period('M').to_timestamp('M')
-        
-        # Merge inteligente: Prioriza API para dados > 2026, mantém Manual para histórico antigo
-        df_final = df_api.combine_first(df_manual)
-    else:
-        df_final = df_manual
-        st.warning("Não foi possível obter dados atualizados da BRAPI. Usando apenas histórico manual.")
-
-    return df_final
+    df.index = pd.to_datetime(df.index).to_period('M').to_timestamp('M')
+    return df
 
 # ==========================================
 # 2. FUNÇÕES DE DADOS (YFINANCE)
@@ -372,11 +262,11 @@ def create_monthly_heatmap(returns_series):
 # ==========================================
 with st.sidebar:
     st.header("⚙️ Parâmetros")
-    min_date = datetime(2012, 1, 1)
+    min_date = datetime(2018, 1, 1)
     max_date = datetime.today()
     
     col_d1, col_d2 = st.columns(2)
-    start_date = col_d1.date_input("Início", datetime(2018, 1, 1), min_value=min_date, max_value=max_date)
+    start_date = col_d1.date_input("Início", min_date, min_value=min_date, max_value=max_date)
     end_date = col_d2.date_input("Fim", max_date, min_value=min_date, max_value=max_date)
     
     rebalance_freq = st.selectbox("Rebalanceamento", ["Mensal", "Anual"])
@@ -403,14 +293,11 @@ with st.sidebar:
     w_stocks = st.slider("Ações", 0, 100, 15)
     w_fiis = st.slider("FIIs", 0, 100, 5)
     w_etfs = st.slider("ETFs", 0, 100, 30)
+    w_tarpon = st.number_input("Fundo Tarpon", 0, 100, 30)
+    w_absolute = st.number_input("Fundo Absolute", 0, 100, 15)
+    w_sparta = st.number_input("Fundo Sparta", 0, 100, 5)
     
-    st.markdown("**Fundos Ativos**")
-    w_tarpon = st.number_input("Fundo Tarpon", 0, 100, 20)
-    w_absolute = st.number_input("Fundo Absolute", 0, 100, 10)
-    w_sparta = st.number_input("Fundo Sparta", 0, 100, 10)
-    w_spx = st.number_input("Fundo SPX Patriot", 0, 100, 10)
-    
-    total_w = w_stocks + w_fiis + w_etfs + w_tarpon + w_absolute + w_sparta + w_spx
+    total_w = w_stocks + w_fiis + w_etfs + w_tarpon + w_absolute + w_sparta
     if total_w != 100:
         st.warning(f"Total: {total_w}%. Será normalizado.")
 
@@ -419,8 +306,7 @@ stock_list = [x.strip() for x in stocks_input.split(',') if x.strip()]
 fii_list = [x.strip() for x in fiis_input.split(',') if x.strip()]
 etf_list = [x.strip() for x in etfs_input.split(',') if x.strip()]
 
-# Chamada da nova função de Fundos (Manual + API)
-df_funds = get_combined_funds_data()
+df_funds = get_hardcoded_funds()
 
 with st.spinner('Consolidando dados de mercado...'):
     df_stocks = get_market_data(stock_list, start_date, end_date)
@@ -441,15 +327,13 @@ if not df_stocks.empty: master_df['Ações Consolidadas'] = df_stocks.mean(axis=
 if not df_fiis.empty: master_df['FIIs Consolidados'] = df_fiis.mean(axis=1)
 if not df_etfs.empty: master_df['ETFs Consolidados'] = df_etfs.mean(axis=1)
 
-# Preencher Fundos (Reindexando para garantir alinhamento de datas)
 master_df['Tarpon GT'] = df_funds['Tarpon GT'].reindex(master_df.index)
 master_df['Absolute Pace'] = df_funds['Absolute Pace'].reindex(master_df.index)
 master_df['Sparta Infra'] = df_funds['Sparta Infra'].reindex(master_df.index)
-master_df['SPX Patriot'] = df_funds['SPX Patriot'].reindex(master_df.index)
 
 # Filtrar datas
 mask = (master_df.index >= pd.to_datetime(start_date)) & (master_df.index <= pd.to_datetime(end_date))
-master_df = master_df.loc[mask].dropna(how='all').fillna(0)
+master_df = master_df.loc[mask].dropna(how='all').fillna(0) # Fillna 0 assume ret 0 se sem dados (cuidado)
 ibov_ret = ibov_ret.reindex(master_df.index).fillna(0)
 
 weights = {
@@ -458,8 +342,7 @@ weights = {
     'ETFs Consolidados': w_etfs,
     'Tarpon GT': w_tarpon,
     'Absolute Pace': w_absolute,
-    'Sparta Infra': w_sparta,
-    'SPX Patriot': w_spx
+    'Sparta Infra': w_sparta
 }
 
 # CALCULAR
@@ -476,12 +359,7 @@ if port_ret is not None:
     # Métricas Gerais
     total_ret = (port_pure.iloc[-1] / 100) - 1
     years = len(port_ret) / 12
-    # Proteção contra divisão por zero se years < 1
-    if years > 0:
-        cagr = (1 + total_ret) ** (1/years) - 1
-    else:
-        cagr = 0
-        
+    cagr = (1 + total_ret) ** (1/years) - 1
     vol = port_ret.std() * np.sqrt(12)
     sharpe = (port_ret.mean() - rf_rate_monthly) / port_ret.std() * np.sqrt(12)
     
