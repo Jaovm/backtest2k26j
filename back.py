@@ -70,7 +70,7 @@ st.markdown("""
 # 1. DADOS DOS FUNDOS (HÍBRIDO: MANUAL + BRAPI)
 # ==========================================
 
-@st.cache_data(ttl=3600) # Cache de 1 hora para não estourar limite da API
+@st.cache_data(ttl=3600)
 def get_brapi_fund_data(cnpjs_dict, token):
     """
     Busca dados de fundos na BRAPI via CNPJ e calcula retorno mensal.
@@ -78,57 +78,67 @@ def get_brapi_fund_data(cnpjs_dict, token):
     api_returns = pd.DataFrame()
 
     for name, cnpj_raw in cnpjs_dict.items():
-        # Limpar CNPJ (apenas números)
-        cnpj_clean = "".join(filter(str.isdigit, cnpj_raw))
+        cnpj_clean = "".join(filter(str.isdigit(), cnpj_raw))
         
-        # Endpoint de Fundos da BRAPI (Estrutura padrão)
-        url = f"https://brapi.dev/api/v2/fund/{cnpj_clean}"
+        # Endpoint v2 para detalhes de fundos
+        url = f"https://brapi.dev/api/v2/funds/{cnpj_clean}"
         params = {
             'token': token,
-            'range': '5y', # Busca 5 anos para garantir overlap e pegar 2026+
+            'range': '5y', 
+            'interval': '1mo' # Tenta trazer direto mensal se a API suportar
         }
         
         try:
             response = requests.get(url, params=params, timeout=10)
+            
             if response.status_code == 200:
                 data = response.json()
                 
-                # Navegar no JSON para achar a time series (geralmente em 'history' ou 'results')
-                # Adaptando para estrutura comum da BRAPI/CVM
-                if 'results' in data and len(data['results']) > 0:
-                    history = data['results'][0].get('history', [])
-                elif 'history' in data:
-                    history = data['history']
-                else:
-                    history = []
+                # A BRAPI para fundos geralmente retorna uma lista em 'funds'
+                fund_info = data.get('funds', [{}])[0]
+                history = fund_info.get('equityValueHistory', []) # Chave comum para fundos
                 
+                if not history:
+                    # Tenta fallback para estrutura de ações caso seja um ETF listado
+                    history = fund_info.get('history', [])
+
                 if history:
-                    # Criar DF temporário
                     df_temp = pd.DataFrame(history)
                     
-                    # Garantir colunas de data e cota (adjustedClose ou close)
-                    if 'date' in df_temp.columns and ('adjustedClose' in df_temp.columns or 'close' in df_temp.columns):
-                        df_temp['date'] = pd.to_datetime(df_temp['date'], unit='s' if isinstance(df_temp['date'].iloc[0], int) else None)
-                        col_price = 'adjustedClose' if 'adjustedClose' in df_temp.columns else 'close'
-                        df_temp.set_index('date', inplace=True)
+                    # Padronização de colunas (Data e Valor da Cota)
+                    # A BRAPI usa 'dailyEquityValue' ou 'close' para fundos
+                    if 'date' in df_temp.columns:
+                        df_temp['date'] = pd.to_datetime(df_temp['date'])
                         
-                        # Resample para Mensal e calcular retorno
-                        monthly_ret = df_temp[col_price].resample('ME').last().pct_change()
-                        monthly_ret.name = name
+                        # Tenta encontrar a coluna de valor (Cota)
+                        val_col = None
+                        for c in ['dailyEquityValue', 'close', 'adjustedClose']:
+                            if c in df_temp.columns:
+                                val_col = c
+                                break
                         
-                        # Merge no DataFrame principal de retornos da API
-                        if api_returns.empty:
-                            api_returns = monthly_ret.to_frame()
-                        else:
-                            api_returns = api_returns.join(monthly_ret, how='outer')
+                        if val_col:
+                            df_temp.set_index('date', inplace=True)
+                            # Ordena por data para garantir o cálculo do pct_change
+                            df_temp = df_temp.sort_index()
+                            
+                            # Resample para Mensal (ME = Month End)
+                            monthly_ret = df_temp[val_col].resample('ME').last().pct_change()
+                            monthly_ret.name = name
+                            
+                            if api_returns.empty:
+                                api_returns = monthly_ret.to_frame()
+                            else:
+                                api_returns = api_returns.join(monthly_ret, how='outer')
             else:
-                print(f"Erro API {name}: {response.status_code}")
+                st.error(f"Erro API na busca de {name}: Status {response.status_code}")
                 
         except Exception as e:
-            print(f"Falha ao buscar {name}: {e}")
+            st.warning(f"Não foi possível processar {name} via API: {e}")
             continue
             
     return api_returns
+
 
 def get_combined_funds_data():
     # --- 1. Dados Hardcoded (Histórico Antigo) ---
