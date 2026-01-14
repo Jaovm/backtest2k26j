@@ -483,6 +483,53 @@ if port_ret is not None:
         
         st.caption("YTD: Rentabilidade acumulada no ano corrente.")
 
+        # ==========================================
+        # CÁLCULO DE SHARPE (ADICIONADO)
+        # ==========================================
+        st.markdown("---")
+        st.subheader("💎 Sharpe Ratio (Janelas Móveis)")
+        
+        # Dicionário com os períodos desejados
+        sharpe_periods = {
+            "12 Meses": 12,
+            "24 Meses": 24,
+            "48 Meses": 48,
+            "60 Meses": 60,
+            "Desde o Início (Completo)": len(port_ret)
+        }
+        
+        sharpe_results = {}
+        
+        for label, months in sharpe_periods.items():
+            # Verifica se há histórico suficiente para o período solicitado
+            if len(port_ret) >= months:
+                # Seleciona os últimos 'months' registros
+                subset = port_ret.tail(months)
+                
+                # Desvio padrão (Volatilidade) do período
+                vol_subset = subset.std()
+                
+                if vol_subset > 0:
+                    # Fórmula: (Retorno Médio - Risk Free) / Volatilidade * Raiz(12) para anualizar
+                    sharpe_val = (subset.mean() - rf_rate_monthly) / vol_subset * np.sqrt(12)
+                    sharpe_results[label] = sharpe_val
+                else:
+                    sharpe_results[label] = 0.0
+            else:
+                sharpe_results[label] = None # Marca como None para exibir traço depois
+
+        # Cria DataFrame transposto para ficar bonito na tela
+        df_sharpe_table = pd.DataFrame([sharpe_results], index=["Índice de Sharpe"])
+        
+        # Exibe a tabela formatada
+        st.dataframe(
+            df_sharpe_table.style.format("{:.2f}", na_rep="-")
+            .background_gradient(cmap='Blues', axis=1, vmin=0, vmax=2),
+            use_container_width=True
+        )
+        
+        st.caption(f"ℹ️ O cálculo utiliza a Taxa Livre de Risco definida na barra lateral ({rf_rate_annual}% a.a.) e anualiza a volatilidade mensal.")
+
     with tab_patr:
         st.subheader("Evolução do Saldo em Conta")
         
