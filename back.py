@@ -212,7 +212,7 @@ def get_benchmark_data(start_date, end_date):
     """Baixa o Ibovespa (^BVSP) como benchmark de mercado."""
     try:
         # Ibovespa
-        ibov = yf.download("BOVA11", start=start_date, end=end_date, progress=False)['Adj Close']
+        ibov = yf.download("BOVA11.SA", start=start_date, end=end_date, progress=False)['Adj Close']
         ibov = ibov.resample('ME').last().pct_change()
         if isinstance(ibov, pd.DataFrame):
              ibov = ibov.iloc[:, 0]
@@ -298,7 +298,7 @@ def create_monthly_heatmap(returns_series):
 # ==========================================
 with st.sidebar:
     st.header("⚙️ Parâmetros")
-    # ALTERADO: Min date de 2018 para 2012 para acomodar SPX Patriot
+    # Mantido: Min date de 2012 para acomodar SPX Patriot
     min_date = datetime(2012, 1, 1)
     max_date = datetime.today()
     
@@ -316,12 +316,10 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("📦 Composição da Carteira")
     
-    # Inputs com valores padrão
-    default_stocks = "AGRO3, B3SA3, BBAS3, BBSE3, BPAC11, CMIG3, EGIE3, ITUB3, PRIO3, PSSA3, SAPR4, SBSP3, TAEE3, TOTS3, VIVT3, WEGE3"
-    default_fiis = "ALZR11, BRCO11, BTLG11, HGLG11, HGRE11, HGRU11, KNCR11, KNRI11, LVBI11, MXRF11, PMLL11, TRXF11, VILG11, VISC11, XPLG11, XPML11"
-    default_etfs = "IVVB11"
-    
     with st.expander("Selecionar Ativos", expanded=False):
+        default_stocks = "AGRO3, B3SA3, BBAS3, BBSE3, BPAC11, CMIG3, EGIE3, ITUB3, PRIO3, PSSA3, SAPR4, SBSP3, TAEE3, TOTS3, VIVT3, WEGE3"
+        default_fiis = "ALZR11, BRCO11, BTLG11, HGLG11, HGRE11, HGRU11, KNCR11, KNRI11, LVBI11, MXRF11, PMLL11, TRXF11, VILG11, VISC11, XPLG11, XPML11"
+        default_etfs = "IVVB11"
         stocks_input = st.text_area("Ações BR", default_stocks)
         fiis_input = st.text_area("FIIs", default_fiis)
         etfs_input = st.text_area("ETFs", default_etfs)
@@ -332,12 +330,15 @@ with st.sidebar:
     w_etfs = st.slider("ETFs", 0, 100, 30)
     
     st.markdown("**Fundos Ativos**")
-    w_tarpon = st.number_input("Fundo Tarpon", 0, 100, 20)
-    w_absolute = st.number_input("Fundo Absolute", 0, 100, 10)
-    w_sparta = st.number_input("Fundo Sparta", 0, 100, 10)
-    w_spx = st.number_input("Fundo SPX Patriot", 0, 100, 10)
+    col_f1, col_f2 = st.columns(2)
+    w_tarpon = col_f1.number_input("Tarpon GT", 0, 100, 10)
+    w_absolute = col_f2.number_input("Absolute Pace", 0, 100, 10)
+    w_sparta = col_f1.number_input("Sparta Infra", 0, 100, 10)
+    w_spx = col_f2.number_input("SPX Patriot", 0, 100, 10)
+    w_real = st.number_input("Real Investor", 0, 100, 10) # ADICIONADO: Novo input para Real Investor
     
-    total_w = w_stocks + w_fiis + w_etfs + w_tarpon + w_absolute + w_sparta + w_spx
+    # ATUALIZADO: Soma incluindo Real Investor
+    total_w = w_stocks + w_fiis + w_etfs + w_tarpon + w_absolute + w_sparta + w_spx + w_real
     if total_w != 100:
         st.warning(f"Total: {total_w}%. Será normalizado.")
 
@@ -367,16 +368,19 @@ if not df_stocks.empty: master_df['Ações Consolidadas'] = df_stocks.mean(axis=
 if not df_fiis.empty: master_df['FIIs Consolidados'] = df_fiis.mean(axis=1)
 if not df_etfs.empty: master_df['ETFs Consolidados'] = df_etfs.mean(axis=1)
 
+# ATUALIZADO: Inclusão do Real Investor na consolidação
 master_df['Tarpon GT'] = df_funds['Tarpon GT'].reindex(master_df.index)
 master_df['Absolute Pace'] = df_funds['Absolute Pace'].reindex(master_df.index)
 master_df['Sparta Infra'] = df_funds['Sparta Infra'].reindex(master_df.index)
 master_df['SPX Patriot'] = df_funds['SPX Patriot'].reindex(master_df.index)
+master_df['Real Investor'] = df_funds['Real Investor'].reindex(master_df.index)
 
 # Filtrar datas
 mask = (master_df.index >= pd.to_datetime(start_date)) & (master_df.index <= pd.to_datetime(end_date))
-master_df = master_df.loc[mask].dropna(how='all').fillna(0) # Fillna 0 assume ret 0 se sem dados (cuidado)
+master_df = master_df.loc[mask].dropna(how='all').fillna(0)
 ibov_ret = ibov_ret.reindex(master_df.index).fillna(0)
 
+# ATUALIZADO: Dicionário de pesos incluindo Real Investor
 weights = {
     'Ações Consolidadas': w_stocks,
     'FIIs Consolidados': w_fiis,
@@ -384,7 +388,8 @@ weights = {
     'Tarpon GT': w_tarpon,
     'Absolute Pace': w_absolute,
     'Sparta Infra': w_sparta,
-    'SPX Patriot': w_spx
+    'SPX Patriot': w_spx,
+    'Real Investor': w_real
 }
 
 # CALCULAR
