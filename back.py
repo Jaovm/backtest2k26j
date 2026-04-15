@@ -333,18 +333,18 @@ with st.sidebar:
         etfs_input = st.text_area("ETFs", default_etfs)
     
     st.markdown("### Pesos (%)")
-    w_stocks = st.slider("Ações", 0, 100, 15)
-    w_fiis = st.slider("FIIs", 0, 100, 5)
-    w_etfs = st.slider("ETFs", 0, 100, 30)
+    w_stocks = st.slider("Ações", 0, 100, 35)
+    w_fiis = st.slider("FIIs", 0, 100, 0)
+    w_etfs = st.slider("ETFs", 0, 100, 20)
     
     st.markdown("**Fundos Ativos**")
     col_f1, col_f2 = st.columns(2)
     w_tarpon = col_f1.number_input("Tarpon GT", 0, 100, 10)
-    w_absolute = col_f2.number_input("Absolute Pace", 0, 100, 10)
-    w_sparta = col_f1.number_input("Sparta Infra", 0, 100, 10)
-    w_spx = col_f2.number_input("SPX Patriot", 0, 100, 5)
-    w_real = col_f1.number_input("Real Investor", 0, 100, 10)
-    w_organon = col_f2.number_input("Organon FIC", 0, 100, 5)
+    w_absolute = col_f2.number_input("Absolute Pace", 0, 100, 25)
+    w_sparta = col_f1.number_input("Sparta Infra", 0, 100, 0)
+    w_spx = col_f2.number_input("SPX Patriot", 0, 100, 0)
+    w_real = col_f1.number_input("Real Investor", 0, 100, 0)
+    w_organon = col_f2.number_input("Organon FIC", 0, 100, 10)
     
     total_w = w_stocks + w_fiis + w_etfs + w_tarpon + w_absolute + w_sparta + w_spx + w_real + w_organon
     if total_w != 100:
