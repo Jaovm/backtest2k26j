@@ -60,7 +60,6 @@ st.markdown("""
 
 def get_hardcoded_funds():
     
-    # Atualizado com os dados do Relatório de Performance Tarpon GT (Fev/2026)
     tarpon_returns = {
         '2018-01': 0.0721, '2018-02': 0.0003, '2018-03': 0.0306, '2018-04': -0.0229, '2018-05': -0.1069, '2018-06': -0.0888, '2018-07': 0.0823, '2018-08': -0.0363, '2018-09': -0.0203, '2018-10': 0.2285, '2018-11': 0.0805, '2018-12': 0.0432,
         '2019-01': 0.0721, '2019-02': 0.0366, '2019-03': -0.0144, '2019-04': 0.0328, '2019-05': 0.0350, '2019-06': 0.0300, '2019-07': 0.0507, '2019-08': 0.0145, '2019-09': 0.0070, '2019-10': -0.0013, '2019-11': 0.0051, '2019-12': 0.1658,
@@ -73,7 +72,6 @@ def get_hardcoded_funds():
         '2026-01': 0.0596, '2026-02': 0.0156
     }
     
-    # Atualizado com os dados do relatório Absolute Pace Long Biased FIC FIA (Mar/2026)
     absolute_returns = {
         '2018-12': 0.0209,
         '2019-01': 0.1064, '2019-02': 0.0345, '2019-03': 0.0295, '2019-04': 0.0270, '2019-05': 0.0213, '2019-06': 0.0414, '2019-07': 0.0496, '2019-08': 0.0184, '2019-09': 0.0124, '2019-10': 0.0445, '2019-11': 0.0254, '2019-12': 0.1110,
@@ -86,7 +84,6 @@ def get_hardcoded_funds():
         '2026-01': 0.0517, '2026-02': 0.0163, '2026-03': 0.0092
     }
     
-    # Mantido conforme original
     sparta_returns = {
         '2018-09': 0.0037, '2018-10': 0.0049, '2018-11': 0.0066, '2018-12': 0.0058, '2019-01': 0.0073,
         '2019-02': 0.0075, '2019-03': 0.0066, '2019-04': 0.0060, '2019-05': 0.0070, '2019-06': 0.0062,
@@ -108,7 +105,6 @@ def get_hardcoded_funds():
         '2025-10': 0.0060, '2025-11': 0.0103, '2025-12': 0.0095, '2026-01': 0.0112, '2026-02': 0.0130
     }
     
-    # Mantido conforme original
     spx_patriot_returns = {
         '2012-07': 0.0035, '2012-08': 0.0366, '2012-09': 0.0304, '2012-10': 0.0190, '2012-11': 0.0153, '2012-12': 0.0488,
         '2013-01': 0.0222, '2013-02': -0.0096, '2013-03': -0.0045, '2013-04': 0.0086, '2013-05': 0.0114, '2013-06': -0.0514, '2013-07': 0.0113, '2013-08': 0.0070, '2013-09': 0.0261, '2013-10': 0.0291, '2013-11': -0.0087, '2013-12': -0.0202,
@@ -127,7 +123,6 @@ def get_hardcoded_funds():
         '2026-01': 0.0914, '2026-02': 0.0286
     }
 
-    # Mantido rigorosamente conforme sua atualização de correção de base
     real_investor_returns = {
         '2012-06': 0.0035, '2012-07': 0.0483, '2012-08': 0.0247, '2012-09': 0.0385, '2012-10': 0.0401, '2012-11': 0.0210, '2012-12': 0.0463,
         '2013-01': 0.0270, '2013-02': -0.0150, '2013-03': -0.0190, '2013-04': 0.0194, '2013-05': 0.0232, '2013-06': -0.0898, '2013-07': 0.0076, '2013-08': 0.0116, '2013-09': 0.0426, '2013-10': 0.0346, '2013-11': -0.0135, '2013-12': -0.0125,
@@ -146,50 +141,21 @@ def get_hardcoded_funds():
         '2026-01': 0.0724, '2026-02': 0.0502
     }
 
-    # ADICIONADO: Organon FIC FIA 
-    # TODO: Inserir o histórico de retornos do Organon FIC FIA seguindo o mesmo padrão ('YYYY-MM': decimal).
     organon_returns = {
-    # 2013 (Início em Fevereiro)
-    '2013-02': 0.0717, '2013-03': 0.0015, '2013-04': -0.0653, '2013-05': -0.0063, '2013-06': -0.0381, '2013-07': -0.0129, '2013-08': -0.0097, '2013-09': -0.0055, '2013-10': 0.0279, '2013-11': 0.0482, '2013-12': -0.0273,
-    
-    # 2014
-    '2014-01': -0.0991, '2014-02': -0.0386, '2014-03': -0.0222, '2014-04': -0.0614, '2014-05': 0.0543, '2014-06': -0.0128, '2014-07': 0.0283, '2014-08': 0.0663, '2014-09': -0.1252, '2014-10': -0.0029, '2014-11': -0.0003, '2014-12': -0.0573,
-    
-    # 2015
-    '2015-01': -0.0299, '2015-02': 0.0652, '2015-03': 0.0021, '2015-04': 0.0424, '2015-05': -0.0568, '2015-06': 0.0241, '2015-07': -0.0322, '2015-08': -0.0452, '2015-09': -0.0297, '2015-10': 0.2141, '2015-11': -0.1263, '2015-12': -0.1787,
-    
-    # 2016
-    '2016-01': -0.1436, '2016-02': -0.0257, '2016-03': 0.4166, '2016-04': 0.2649, '2016-05': -0.0163, '2016-06': -0.0659, '2016-07': 0.5626, '2016-08': 0.1210, '2016-09': -0.1253, '2016-10': -0.0352, '2016-11': -0.0278, '2016-12': 0.0583,
-    
-    # 2017
-    '2017-01': 0.1198, '2017-02': 0.4429, '2017-03': 0.1676, '2017-04': 0.0928, '2017-05': -0.0230, '2017-06': 0.0548, '2017-07': 0.0206, '2017-08': 0.1848, '2017-09': 0.1015, '2017-10': 0.0345, '2017-11': -0.0165, '2017-12': 0.0039,
-    
-    # 2018
-    '2018-01': 0.0886, '2018-02': 0.0271, '2018-03': 0.0689, '2018-04': 0.0203, '2018-05': -0.0543, '2018-06': -0.0473, '2018-07': 0.0629, '2018-08': -0.0152, '2018-09': -0.0620, '2018-10': 0.1361, '2018-11': 0.0872, '2018-12': 0.0449,
-    
-    # 2019
-    '2019-01': 0.0481, '2019-02': -0.0041, '2019-03': -0.0042, '2019-04': -0.0348, '2019-05': 0.0287, '2019-06': 0.0964, '2019-07': 0.0778, '2019-08': -0.0247, '2019-09': -0.0289, '2019-10': 0.0082, '2019-11': 0.0429, '2019-12': 0.2541,
-    
-    # 2020
-    '2020-01': -0.0293, '2020-02': -0.0251, '2020-03': -0.4001, '2020-04': 0.1283, '2020-05': -0.0492, '2020-06': 0.1635, '2020-07': 0.0118, '2020-08': -0.0137, '2020-09': -0.0126, '2020-10': 0.0183, '2020-11': 0.0950, '2020-12': 0.0636,
-    
-    # 2021
-    '2021-01': 0.0409, '2021-02': 0.0740, '2021-03': 0.1436, '2021-04': 0.1116, '2021-05': 0.1332, '2021-06': 0.0368, '2021-07': -0.0585, '2021-08': 0.0056, '2021-09': -0.0414, '2021-10': -0.0502, '2021-11': -0.0070, '2021-12': 0.0762,
-    
-    # 2022
-    '2022-01': 0.0350, '2022-02': -0.0309, '2022-03': 0.0332, '2022-04': -0.0253, '2022-05': 0.0549, '2022-06': -0.1009, '2022-07': 0.0607, '2022-08': 0.0895, '2022-09': 0.0322, '2022-10': 0.0607, '2022-11': -0.0989, '2022-12': 0.0296,
-    
-    # 2023
-    '2023-01': 0.0409, '2023-02': -0.0352, '2023-03': -0.0155, '2023-04': 0.0549, '2023-05': 0.1883, '2023-06': 0.0937, '2023-07': 0.0469, '2023-08': -0.0010, '2023-09': 0.0061, '2023-10': -0.0788, '2023-11': 0.1340, '2023-12': 0.0782,
-    
-    # 2024
-    '2024-01': -0.0122, '2024-02': 0.0069, '2024-03': 0.0452, '2024-04': -0.0703, '2024-05': -0.0265, '2024-06': -0.0053, '2024-07': 0.0415, '2024-08': 0.0689, '2024-09': -0.0432, '2024-10': -0.0049, '2024-11': -0.0311, '2024-12': -0.0726,
-    
-    # 2025
-    '2025-01': 0.0588, '2025-02': -0.0428, '2025-03': 0.0398, '2025-04': 0.0871, '2025-05': 0.0562, '2025-06': 0.0298, '2025-07': -0.0626, '2025-08': 0.0209, '2025-09': 0.0109, '2025-10': 0.0158, '2025-11': 0.0478, '2025-12': 0.0161,
-    
-    # 2026
-    '2026-01': 0.1273, '2026-02': 0.0138, '2026-03': -0.0622, '2026-04': 0.0523
+        '2013-02': 0.0717, '2013-03': 0.0015, '2013-04': -0.0653, '2013-05': -0.0063, '2013-06': -0.0381, '2013-07': -0.0129, '2013-08': -0.0097, '2013-09': -0.0055, '2013-10': 0.0279, '2013-11': 0.0482, '2013-12': -0.0273,
+        '2014-01': -0.0991, '2014-02': -0.0386, '2014-03': -0.0222, '2014-04': -0.0614, '2014-05': 0.0543, '2014-06': -0.0128, '2014-07': 0.0283, '2014-08': 0.0663, '2014-09': -0.1252, '2014-10': -0.0029, '2014-11': -0.0003, '2014-12': -0.0573,
+        '2015-01': -0.0299, '2015-02': 0.0652, '2015-03': 0.0021, '2015-04': 0.0424, '2015-05': -0.0568, '2015-06': 0.0241, '2015-07': -0.0322, '2015-08': -0.0452, '2015-09': -0.0297, '2015-10': 0.2141, '2015-11': -0.1263, '2015-12': -0.1787,
+        '2016-01': -0.1436, '2016-02': -0.0257, '2016-03': 0.4166, '2016-04': 0.2649, '2016-05': -0.0163, '2016-06': -0.0659, '2016-07': 0.5626, '2016-08': 0.1210, '2016-09': -0.1253, '2016-10': -0.0352, '2016-11': -0.0278, '2016-12': 0.0583,
+        '2017-01': 0.1198, '2017-02': 0.4429, '2017-03': 0.1676, '2017-04': 0.0928, '2017-05': -0.0230, '2017-06': 0.0548, '2017-07': 0.0206, '2017-08': 0.1848, '2017-09': 0.1015, '2017-10': 0.0345, '2017-11': -0.0165, '2017-12': 0.0039,
+        '2018-01': 0.0886, '2018-02': 0.0271, '2018-03': 0.0689, '2018-04': 0.0203, '2018-05': -0.0543, '2018-06': -0.0473, '2018-07': 0.0629, '2018-08': -0.0152, '2018-09': -0.0620, '2018-10': 0.1361, '2018-11': 0.0872, '2018-12': 0.0449,
+        '2019-01': 0.0481, '2019-02': -0.0041, '2019-03': -0.0042, '2019-04': -0.0348, '2019-05': 0.0287, '2019-06': 0.0964, '2019-07': 0.0778, '2019-08': -0.0247, '2019-09': -0.0289, '2019-10': 0.0082, '2019-11': 0.0429, '2019-12': 0.2541,
+        '2020-01': -0.0293, '2020-02': -0.0251, '2020-03': -0.4001, '2020-04': 0.1283, '2020-05': -0.0492, '2020-06': 0.1635, '2020-07': 0.0118, '2020-08': -0.0137, '2020-09': -0.0126, '2020-10': 0.0183, '2020-11': 0.0950, '2020-12': 0.0636,
+        '2021-01': 0.0409, '2021-02': 0.0740, '2021-03': 0.1436, '2021-04': 0.1116, '2021-05': 0.1332, '2021-06': 0.0368, '2021-07': -0.0585, '2021-08': 0.0056, '2021-09': -0.0414, '2021-10': -0.0502, '2021-11': -0.0070, '2021-12': 0.0762,
+        '2022-01': 0.0350, '2022-02': -0.0309, '2022-03': 0.0332, '2022-04': -0.0253, '2022-05': 0.0549, '2022-06': -0.1009, '2022-07': 0.0607, '2022-08': 0.0895, '2022-09': 0.0322, '2022-10': 0.0607, '2022-11': -0.0989, '2022-12': 0.0296,
+        '2023-01': 0.0409, '2023-02': -0.0352, '2023-03': -0.0155, '2023-04': 0.0549, '2023-05': 0.1883, '2023-06': 0.0937, '2023-07': 0.0469, '2023-08': -0.0010, '2023-09': 0.0061, '2023-10': -0.0788, '2023-11': 0.1340, '2023-12': 0.0782,
+        '2024-01': -0.0122, '2024-02': 0.0069, '2024-03': 0.0452, '2024-04': -0.0703, '2024-05': -0.0265, '2024-06': -0.0053, '2024-07': 0.0415, '2024-08': 0.0689, '2024-09': -0.0432, '2024-10': -0.0049, '2024-11': -0.0311, '2024-12': -0.0726,
+        '2025-01': 0.0588, '2025-02': -0.0428, '2025-03': 0.0398, '2025-04': 0.0871, '2025-05': 0.0562, '2025-06': 0.0298, '2025-07': -0.0626, '2025-08': 0.0209, '2025-09': 0.0109, '2025-10': 0.0158, '2025-11': 0.0478, '2025-12': 0.0161,
+        '2026-01': 0.1273, '2026-02': 0.0138, '2026-03': -0.0622, '2026-04': 0.0523
     }
 
     df = pd.DataFrame({
@@ -250,13 +216,10 @@ def get_market_data(tickers, start_date, end_date):
 @st.cache_data
 def get_benchmark_data(start_date, end_date):
     try:
-        # Usando o ticker correto do índice Ibovespa (^BVSP) ou BOVA11.SA
         ibov = yf.download("BOVA11.SA", start=start_date, end=end_date, progress=False)
-        
         if ibov.empty:
-            return pd.Series(dtype='float64') # Garante o tipo float mesmo vazio
+            return pd.Series(dtype='float64')
 
-        # Seleção segura da coluna
         if 'Adj Close' in ibov.columns:
             prices = ibov['Adj Close']
         else:
@@ -281,11 +244,8 @@ def calculate_portfolio_performance(returns_df, weights, initial_cap, monthly_co
     active_weights = np.array([weights[c] for c in available_assets])
     active_weights = active_weights / active_weights.sum() 
     
-    # 1. Performance Pura (Cota Base 100) - Sem aportes externos
     portfolio_pure_idx = [100.0]
     monthly_returns = []
-    
-    # 2. Performance com Aportes (Patrimônio)
     portfolio_wealth = [initial_cap]
     
     current_weights = active_weights.copy()
@@ -295,22 +255,17 @@ def calculate_portfolio_performance(returns_df, weights, initial_cap, monthly_co
     for i in range(len(dates)):
         r_t = asset_returns_np[i]
         
-        # Retorno do mês (weighted average)
         port_ret = np.dot(current_weights, r_t)
         monthly_returns.append(port_ret)
         
-        # Atualiza Cota (Base 100)
         new_idx = portfolio_pure_idx[-1] * (1 + port_ret)
         portfolio_pure_idx.append(new_idx)
         
-        # Atualiza Patrimônio (Com aporte)
         new_wealth = (portfolio_wealth[-1] * (1 + port_ret)) + monthly_contribution
         portfolio_wealth.append(new_wealth)
         
-        # Drift dos pesos
         current_weights = current_weights * (1 + r_t) / (1 + port_ret)
         
-        # Rebalanceamento
         is_rebalance_time = (rebalance_freq == 'Mensal') or \
                             (rebalance_freq == 'Anual' and dates[i].month == 12)
         if is_rebalance_time:
@@ -324,21 +279,16 @@ def calculate_portfolio_performance(returns_df, weights, initial_cap, monthly_co
     return portfolio_pure_series, portfolio_wealth_series, monthly_returns_series
 
 def create_monthly_heatmap(returns_series):
-    """Cria tabela estilo Mais Retorno (Ano x Mês)."""
     df_ret = returns_series.to_frame(name='Retorno')
     df_ret['Ano'] = df_ret.index.year
     df_ret['Mes'] = df_ret.index.month
     
     pivot = df_ret.pivot(index='Ano', columns='Mes', values='Retorno')
-    
-    # Adicionar acumulado do ano
     pivot['YTD'] = ((1 + pivot.fillna(0)).prod(axis=1) - 1)
     
-    # Mapa de meses numérico para nome curto
     month_map = {1: 'Jan', 2: 'Fev', 3: 'Mar', 4: 'Abr', 5: 'Mai', 6: 'Jun', 
                  7: 'Jul', 8: 'Ago', 9: 'Set', 10: 'Out', 11: 'Nov', 12: 'Dez'}
     pivot.rename(columns=month_map, inplace=True)
-    
     return pivot
 
 # ==========================================
@@ -389,7 +339,6 @@ with st.sidebar:
     if total_w != 100:
         st.warning(f"Total: {total_w}%. Será normalizado.")
 
-# --- DADOS ---
 stock_list = [x.strip() for x in stocks_input.split(',') if x.strip()]
 fii_list = [x.strip() for x in fiis_input.split(',') if x.strip()]
 etf_list = [x.strip() for x in etfs_input.split(',') if x.strip()]
@@ -402,7 +351,6 @@ with st.spinner('Consolidando dados de mercado...'):
     df_etfs = get_market_data(etf_list, start_date, end_date)
     ibov_ret = get_benchmark_data(start_date, end_date)
 
-# Consolidar Master DF
 all_dates = df_funds.index.union(df_stocks.index).union(df_fiis.index).union(df_etfs.index)
 if not ibov_ret.empty:
     all_dates = all_dates.union(ibov_ret.index)
@@ -410,12 +358,10 @@ all_dates = all_dates.sort_values()
 
 master_df = pd.DataFrame(index=all_dates)
 
-# Preencher classes de ativos
 if not df_stocks.empty: master_df['Ações Consolidadas'] = df_stocks.mean(axis=1)
 if not df_fiis.empty: master_df['FIIs Consolidados'] = df_fiis.mean(axis=1)
 if not df_etfs.empty: master_df['ETFs Consolidados'] = df_etfs.mean(axis=1)
 
-# Inclusão dos fundos na consolidação
 master_df['Tarpon GT'] = df_funds['Tarpon GT'].reindex(master_df.index)
 master_df['Absolute Pace'] = df_funds['Absolute Pace'].reindex(master_df.index)
 master_df['Sparta Infra'] = df_funds['Sparta Infra'].reindex(master_df.index)
@@ -423,7 +369,6 @@ master_df['SPX Patriot'] = df_funds['SPX Patriot'].reindex(master_df.index)
 master_df['Real Investor'] = df_funds['Real Investor'].reindex(master_df.index)
 master_df['Organon FIC FIA'] = df_funds['Organon FIC FIA'].reindex(master_df.index)
 
-# Filtrar datas
 mask = (master_df.index >= pd.to_datetime(start_date)) & (master_df.index <= pd.to_datetime(end_date))
 master_df = master_df.loc[mask].dropna(how='all').fillna(0)
 ibov_ret = ibov_ret.reindex(master_df.index).fillna(0)
@@ -440,34 +385,28 @@ weights = {
     'Organon FIC FIA': w_organon
 }
 
-# CALCULAR
 port_pure, port_wealth, port_ret = calculate_portfolio_performance(
     master_df, weights, investimento_inicial, aporte_mensal, rebalance_freq
 )
 
 if port_ret is not None:
-    # Gerar Benchmarks Acumulados
     cdi_ret_series = pd.Series(rf_rate_monthly, index=port_ret.index)
     cdi_accum = (1 + cdi_ret_series).cumprod() * 100
     ibov_accum = (1 + ibov_ret).cumprod() * 100
     
-    # Métricas Gerais
     total_ret = (port_pure.iloc[-1] / 100) - 1
     years = len(port_ret) / 12
     cagr = (1 + total_ret) ** (1/years) - 1 if years > 0 else 0
     vol = port_ret.std() * np.sqrt(12)
     sharpe = (port_ret.mean() - rf_rate_monthly) / port_ret.std() * np.sqrt(12) if port_ret.std() > 0 else 0
     
-    # Drawdown
     cum_ret = (1 + port_ret).cumprod()
     peak = cum_ret.cummax()
     dd_series = (cum_ret - peak) / peak
     max_dd = dd_series.min()
 
-    # Layout Principal
     st.title("📊 Relatório de Performance")
     
-    # --- HEADER KPI (Estilo Cards) ---
     col1, col2, col3, col4, col5 = st.columns(5)
     col1.markdown(f"<div class='metric-card'><div class='metric-value'>{total_ret:.1%}</div><div class='metric-label'>Retorno Total</div></div>", unsafe_allow_html=True)
     col2.markdown(f"<div class='metric-card'><div class='metric-value'>{cagr:.1%}</div><div class='metric-label'>CAGR (a.a.)</div></div>", unsafe_allow_html=True)
@@ -477,7 +416,6 @@ if port_ret is not None:
     
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- TABS DE ANÁLISE ---
     tab_perf, tab_risk, tab_month, tab_patr, tab_proj = st.tabs([
         "📈 Rentabilidade Comparativa",
         "🛡️ Análise de Risco",
@@ -502,8 +440,7 @@ if port_ret is not None:
             legend=dict(orientation="h", y=1.02, x=0.5, xanchor="center"),
             hovermode="x unified"
         )
-        st.plotly_chart(fig, use_container_width=True)
-        
+        st.plotly_chart(fig, width="stretch")
         st.info("Nota: O gráfico acima mostra a valorização pura das cotas (iniciando em 100), ignorando aportes, para permitir comparação justa com índices.")
 
     with tab_risk:
@@ -514,7 +451,7 @@ if port_ret is not None:
             fig_dd = px.area(dd_series, title="")
             fig_dd.update_traces(fillcolor='rgba(255,0,0,0.2)', line_color='red')
             fig_dd.update_layout(template="plotly_white", yaxis_tickformat=".1%", showlegend=False)
-            st.plotly_chart(fig_dd, use_container_width=True)
+            st.plotly_chart(fig_dd, width="stretch")
             
         with col_r2:
             st.markdown("**Volatilidade Móvel (12 Meses)**")
@@ -522,9 +459,8 @@ if port_ret is not None:
             fig_vol = px.line(rolling_vol, title="")
             fig_vol.update_traces(line_color='#FF9800')
             fig_vol.update_layout(template="plotly_white", yaxis_tickformat=".1%", showlegend=False)
-            st.plotly_chart(fig_vol, use_container_width=True)
+            st.plotly_chart(fig_vol, width="stretch")
 
-        # Estatísticas Adicionais
         st.markdown("### Estatísticas Detalhadas")
         stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
         
@@ -542,20 +478,15 @@ if port_ret is not None:
         st.subheader("Tabela de Rentabilidade (Heatmap)")
         heatmap_data = create_monthly_heatmap(port_ret)
         
-        # Colorir dataframe (Estilo Excel)
         st.dataframe(
             heatmap_data.style.format("{:.2%}")
             .background_gradient(cmap='RdYlGn', vmin=-0.05, vmax=0.05, axis=None)
             .highlight_null(color='white'),
-            use_container_width=True,
+            width="stretch",
             height=400
         )
-        
         st.caption("YTD: Rentabilidade acumulada no ano corrente.")
 
-        # ==========================================
-        # CÁLCULO DE SHARPE
-        # ==========================================
         st.markdown("---")
         st.subheader("💎 Sharpe Ratio (Janelas Móveis)")
         
@@ -568,12 +499,10 @@ if port_ret is not None:
         }
         
         sharpe_results = {}
-        
         for label, months in sharpe_periods.items():
             if len(port_ret) >= months:
                 subset = port_ret.tail(months)
                 vol_subset = subset.std()
-                
                 if vol_subset > 0:
                     sharpe_val = (subset.mean() - rf_rate_monthly) / vol_subset * np.sqrt(12)
                     sharpe_results[label] = sharpe_val
@@ -587,9 +516,8 @@ if port_ret is not None:
         st.dataframe(
             df_sharpe_table.style.format("{:.2f}", na_rep="-")
             .background_gradient(cmap='Blues', axis=1, vmin=0, vmax=2),
-            use_container_width=True
+            width="stretch"
         )
-        
         st.caption(f"ℹ️ O cálculo utiliza a Taxa Livre de Risco definida na barra lateral ({rf_rate_annual}% a.a.) e anualiza a volatilidade mensal.")
 
     with tab_patr:
@@ -600,7 +528,7 @@ if port_ret is not None:
             fig_wealth = px.area(port_wealth, title="Crescimento Patrimonial (Cotas + Aportes)")
             fig_wealth.update_traces(fillcolor='rgba(76, 175, 80, 0.3)', line_color='#4CAF50')
             fig_wealth.update_layout(template="plotly_white", yaxis_title="Saldo (R$)")
-            st.plotly_chart(fig_wealth, use_container_width=True)
+            st.plotly_chart(fig_wealth, width="stretch")
         
         with col_p2:
             final_val = port_wealth.iloc[-1]
@@ -615,41 +543,31 @@ if port_ret is not None:
     with tab_proj:
         st.subheader("🔮 Projeção de Cenários — Próximos 36 Meses")
 
-        # ------------------------------------------------------------------
-        # PARÂMETROS ESTATÍSTICOS extraídos do histórico real
-        # ------------------------------------------------------------------
-        mu    = port_ret.mean()          # drift mensal histórico
-        sigma = port_ret.std()           # volatilidade mensal histórica
+        mu    = port_ret.mean()
+        sigma = port_ret.std()
         N_MONTHS  = 36
-        N_SIM     = 10_000               # número de caminhos Monte Carlo
-        saldo_t0  = port_wealth.iloc[-1] # saldo atual (ponto de partida)
+        N_SIM     = 10_000
+        saldo_t0  = port_wealth.iloc[-1]
         last_date = port_wealth.index[-1]
 
-        # ------------------------------------------------------------------
-        # SIMULAÇÃO DE MONTE CARLO
-        # S(t) = S(t-1)·(1 + r_t) + aporte_mensal,  r_t ~ N(µ, σ)
-        # ------------------------------------------------------------------
         np.random.seed(42)
         paths = np.empty((N_SIM, N_MONTHS + 1))
         paths[:, 0] = saldo_t0
+
         rand_returns = np.random.normal(mu, sigma, size=(N_SIM, N_MONTHS))
         for t in range(1, N_MONTHS + 1):
             paths[:, t] = paths[:, t - 1] * (1 + rand_returns[:, t - 1]) + aporte_mensal
 
-        p_otimista   = np.percentile(paths, 95, axis=0)   # verde
-        p_neutro     = np.percentile(paths, 50, axis=0)   # azul
-        p_pessimista = np.percentile(paths, 5,  axis=0)   # vermelho
+        p_otimista   = np.percentile(paths, 95, axis=0)
+        p_neutro     = np.percentile(paths, 50, axis=0)
+        p_pessimista = np.percentile(paths, 5,  axis=0)
 
         hist_tail    = port_wealth.tail(12)
         future_dates = pd.date_range(start=last_date, periods=N_MONTHS + 1, freq="ME")[1:]
         proj_dates   = [last_date] + list(future_dates)
 
-        # ------------------------------------------------------------------
-        # GRÁFICO
-        # ------------------------------------------------------------------
         fig_proj = go.Figure()
 
-        # Faixa de confiança (preenchimento entre P5 e P95)
         fig_proj.add_trace(go.Scatter(
             x=list(proj_dates) + list(reversed(proj_dates)),
             y=list(p_otimista) + list(reversed(p_pessimista)),
@@ -661,7 +579,6 @@ if port_ret is not None:
             hoverinfo="skip",
         ))
 
-        # Histórico real (último ano)
         fig_proj.add_trace(go.Scatter(
             x=hist_tail.index,
             y=hist_tail.values,
@@ -671,45 +588,55 @@ if port_ret is not None:
             hovertemplate="<b>Histórico</b><br>%{x|%b/%Y}: R$ %{y:,.0f}<extra></extra>",
         ))
 
-        # Cenário Otimista — P95
         fig_proj.add_trace(go.Scatter(
-            x=proj_dates, y=p_otimista,
-            mode="lines", name="Otimista (P95)",
+            x=proj_dates,
+            y=p_otimista,
+            mode="lines",
+            name="Otimista (P95)",
             line=dict(color="#27ae60", width=2.5, dash="dash"),
             hovertemplate="<b>Otimista</b><br>%{x|%b/%Y}: R$ %{y:,.0f}<extra></extra>",
         ))
 
-        # Cenário Neutro — P50
         fig_proj.add_trace(go.Scatter(
-            x=proj_dates, y=p_neutro,
-            mode="lines", name="Neutro (P50)",
+            x=proj_dates,
+            y=p_neutro,
+            mode="lines",
+            name="Neutro (P50)",
             line=dict(color="#2980b9", width=2.5, dash="dot"),
             hovertemplate="<b>Neutro</b><br>%{x|%b/%Y}: R$ %{y:,.0f}<extra></extra>",
         ))
 
-        # Cenário Pessimista — P5
         fig_proj.add_trace(go.Scatter(
-            x=proj_dates, y=p_pessimista,
-            mode="lines", name="Pessimista (P5)",
+            x=proj_dates,
+            y=p_pessimista,
+            mode="lines",
+            name="Pessimista (P5)",
             line=dict(color="#e74c3c", width=2.5, dash="dash"),
             hovertemplate="<b>Pessimista</b><br>%{x|%b/%Y}: R$ %{y:,.0f}<extra></extra>",
         ))
 
-        # Linha vertical "Hoje"
+        # CORREÇÃO CRÍTICA AQUI: Separar o add_vline do texto contorna o bug do Pandas 2.2+ no Plotly
         fig_proj.add_vline(
-            x=last_date, line_width=1.5, line_dash="dot", line_color="gray",
-            annotation_text=" Hoje", annotation_position="top left",
-            annotation_font_size=12, annotation_font_color="gray",
+            x=last_date,
+            line_width=1.5,
+            line_dash="dot",
+            line_color="gray"
+        )
+        fig_proj.add_annotation(
+            x=last_date,
+            y=1,
+            yref="paper",
+            text=" Hoje",
+            showarrow=False,
+            xanchor="left",
+            yanchor="top",
+            font=dict(color="gray", size=12)
         )
 
         fig_proj.update_layout(
             template="plotly_white",
             title=dict(
-                text=(
-                    f"Monte Carlo — {N_SIM:,} simulações | "
-                    f"µ={mu:.2%}/mês | σ={sigma:.2%}/mês | "
-                    f"Aporte R$ {aporte_mensal:,.0f}/mês"
-                ),
+                text=f"Monte Carlo — {N_SIM:,} simulações | µ={mu:.2%}/mês | σ={sigma:.2%}/mês | Aporte R$ {aporte_mensal:,.0f}/mês",
                 font_size=13,
             ),
             yaxis=dict(title="Saldo (R$)", tickformat=",.0f"),
@@ -718,11 +645,9 @@ if port_ret is not None:
             hovermode="x unified",
             margin=dict(t=80),
         )
-        st.plotly_chart(fig_proj, use_container_width=True)
 
-        # ------------------------------------------------------------------
-        # CARDS DE SALDO FINAL
-        # ------------------------------------------------------------------
+        st.plotly_chart(fig_proj, width="stretch")
+
         st.markdown("### 📊 Saldo Final Projetado em 36 Meses")
 
         saldo_otimista   = p_otimista[-1]
@@ -730,6 +655,7 @@ if port_ret is not None:
         saldo_pessimista = p_pessimista[-1]
 
         col_p1, col_p2, col_p3 = st.columns(3)
+
         col_p1.metric(
             label="🟢 Cenário Otimista (P95)",
             value=f"R$ {saldo_otimista:,.2f}",
@@ -747,9 +673,6 @@ if port_ret is not None:
             delta_color="inverse",
         )
 
-        # ------------------------------------------------------------------
-        # INFORMAÇÕES CONTEXTUAIS
-        # ------------------------------------------------------------------
         st.markdown("---")
         col_inf1, col_inf2, col_inf3, col_inf4 = st.columns(4)
         col_inf1.info(f"**Drift µ:** {mu:.3%}/mês")
@@ -758,9 +681,9 @@ if port_ret is not None:
         col_inf4.info(f"**Saldo atual:** R$ {saldo_t0:,.2f}")
 
         st.caption(
-            f"⚠️ Projeções geradas por {N_SIM:,} simulações de Monte Carlo com retornos distribuídos "
-            f"normalmente (µ = {mu:.3%}, σ = {sigma:.3%}), incluindo aporte mensal de "
-            f"R$ {aporte_mensal:,.2f}. Rentabilidade passada não é garantia de retorno futuro."
+            f"⚠️ Projeções geradas por {N_SIM:,} simulações de Monte Carlo com retornos distribuídos normalmente "
+            f"(µ = {mu:.3%}, σ = {sigma:.3%}), incluindo aporte mensal de R$ {aporte_mensal:,.2f}. "
+            "Rentabilidade passada não é garantia de retorno futuro."
         )
 
 else:
