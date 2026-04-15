@@ -5,11 +5,6 @@ import yfinance as yf
 import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime
-import locale
-locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
-
-# Aí basta usar:
-valor_formatado = locale.currency(final_val, grouping=True, symbol=True)
 
 # ==========================================
 # 0. CONFIGURAÇÃO DA PÁGINA
@@ -59,6 +54,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
+def formar_brl(valor):
+    # Formata com padrão americano e depois inverte separadores
+    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    
 # ==========================================
 # 1. DADOS HARDCODED (FUNDOS ATIVOS)
 # ==========================================
@@ -439,6 +439,7 @@ if port_ret is not None:
         
         fig = px.line(df_chart, title="Comparativo de Rentabilidade Acumulada")
         fig.update_layout(
+            separators=',.',
             template="plotly_white", 
             xaxis_title="", 
             yaxis_title="Índice (Base 100)",
@@ -485,6 +486,7 @@ if port_ret is not None:
         
         st.dataframe(
             heatmap_data.style.format("{:.2%}")
+            df.style.format(precision=2, decimal=',', thousands='.')
             .background_gradient(cmap='RdYlGn', vmin=-0.05, vmax=0.05, axis=None)
             .highlight_null(color='white'),
             width="stretch",
@@ -520,6 +522,7 @@ if port_ret is not None:
         
         st.dataframe(
             df_sharpe_table.style.format("{:.2f}", na_rep="-")
+            df.style.format(precision=2, decimal=',', thousands='.')
             .background_gradient(cmap='Blues', axis=1, vmin=0, vmax=2),
             width="stretch"
         )
@@ -540,9 +543,9 @@ if port_ret is not None:
             total_invested = investimento_inicial + (aporte_mensal * len(port_ret))
             profit_loss = final_val - total_invested
             
-            st.metric("Saldo Final", f"R$ {final_val:,.2f}")
-            st.metric("Total Investido", f"R$ {total_invested:,.2f}")
-            st.metric("Lucro/Prejuízo", f"R$ {profit_loss:,.2f}", 
+            st.metric("Saldo Final", value=formar_brl(final_val))
+            st.metric("Total Investido", value=formar_brl(total_invested:))
+            st.metric("Lucro/Prejuízo", value=formar_brl(profit_loss)), 
                       delta=f"{(final_val/total_invested - 1):.1%}")
 
     with tab_proj:
