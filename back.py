@@ -149,7 +149,6 @@ def get_hardcoded_funds():
     # ADICIONADO: Organon FIC FIA 
     # TODO: Inserir o histórico de retornos do Organon FIC FIA seguindo o mesmo padrão ('YYYY-MM': decimal).
     organon_returns = {
-        organon_returns = {
     # 2013 (Início em Fevereiro)
     '2013-02': 0.0717, '2013-03': 0.0015, '2013-04': -0.0653, '2013-05': -0.0063, '2013-06': -0.0381, '2013-07': -0.0129, '2013-08': -0.0097, '2013-09': -0.0055, '2013-10': 0.0279, '2013-11': 0.0482, '2013-12': -0.0273,
     
