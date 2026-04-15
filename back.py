@@ -546,7 +546,7 @@ if port_ret is not None:
             st.metric("Saldo Final", value=formar_brl(final_val))
             st.metric("Total Investido", value=formar_brl(total_invested:))
             st.metric("Lucro/Prejuízo", value=formar_brl(profit_loss)), 
-                      delta=f"{(final_val/total_invested - 1):.1%}")
+                      delta=f"{(final_val/total_invested - 1):.1%}"
 
     with tab_proj:
         st.subheader("🔮 Projeção de Cenários — Próximos 36 Meses")
