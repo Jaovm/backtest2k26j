@@ -5,6 +5,11 @@ import yfinance as yf
 import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime
+import locale
+locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+
+# Aí basta usar:
+valor_formatado = locale.currency(final_val, grouping=True, symbol=True)
 
 # ==========================================
 # 0. CONFIGURAÇÃO DA PÁGINA
