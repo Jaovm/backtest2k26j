@@ -318,15 +318,15 @@ with st.sidebar:
     rf_rate_annual = st.number_input("Taxa CDI/Livre de Risco (% a.a.)", value=10.0, step=0.5)
     rf_rate_monthly = (1 + rf_rate_annual/100)**(1/12) - 1
 
-    aporte_mensal = st.number_input("Aporte Mensal (R$)", value=2000.0, step=100.0)
-    investimento_inicial = st.number_input("Investimento Inicial (R$)", value=50000.0, step=1000.0)
+    aporte_mensal = st.number_input("Aporte Mensal (R$)", value=1000.0, step=100.0)
+    investimento_inicial = st.number_input("Investimento Inicial (R$)", value=100000.0, step=1000.0)
 
     st.markdown("---")
     st.subheader("📦 Composição da Carteira")
     
     with st.expander("Selecionar Ativos", expanded=False):
-        default_stocks = "AGRO3, B3SA3, BBAS3, BBSE3, BPAC11, CMIG3, EGIE3, ITUB3, PRIO3, PSSA3, SAPR4, SBSP3, TAEE3, TOTS3, VIVT3, WEGE3"
-        default_fiis = "ALZR11, BRCO11, BTLG11, HGLG11, HGRE11, HGRU11, KNCR11, KNRI11, LVBI11, MXRF11, PMLL11, TRXF11, VILG11, VISC11, XPLG11, XPML11"
+        default_stocks = "EGIE3, ITUB3, PSSA3, WEGE3, CXSE3, SBSP3, TAEE3, VIVT3, CPFE3, SAPR3, BBAS3, PRIO3, TOTS3, BPAC3, ALUP3, BMOB3"
+        default_fiis = "ALZR11, BRCO11, BTLG11, HGLG11, HGRE11, HGRU11, KNCR11, KNRI11, LVBI11, MXRF11, PMLL11, XPLG11, XPML11"
         default_etfs = "IVVB11"
         stocks_input = st.text_area("Ações BR", default_stocks)
         fiis_input = st.text_area("FIIs", default_fiis)
