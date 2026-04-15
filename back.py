@@ -257,17 +257,25 @@ def get_market_data(tickers, start_date, end_date):
 
 @st.cache_data
 def get_benchmark_data(start_date, end_date):
-    """Baixa o Ibovespa (^BVSP) como benchmark de mercado."""
     try:
-        # Ibovespa
-        ibov = yf.download("BOVA11.SA", start=start_date, end=end_date, progress=False)['Adj Close']
-        ibov = ibov.resample('ME').last().pct_change()
-        if isinstance(ibov, pd.DataFrame):
-             ibov = ibov.iloc[:, 0]
-        ibov.name = "Ibovespa"
-        return ibov
-    except:
-        return pd.Series()
+        # Usando o ticker correto do índice Ibovespa (^BVSP) ou BOVA11.SA
+        ibov = yf.download("BOVA11.SA", start=start_date, end=end_date, progress=False)
+        
+        if ibov.empty:
+            return pd.Series(dtype='float64') # Garante o tipo float mesmo vazio
+
+        # Seleção segura da coluna
+        if 'Adj Close' in ibov.columns:
+            prices = ibov['Adj Close']
+        else:
+            prices = ibov.iloc[:, 0]
+
+        returns = prices.resample('ME').last().pct_change().dropna()
+        returns.name = "Ibovespa"
+        return returns
+    except Exception as e:
+        st.error(f"Erro no benchmark: {e}")
+        return pd.Series(dtype='float64')
 
 # ==========================================
 # 3. LÓGICA DE CÁLCULO
