@@ -478,11 +478,12 @@ if port_ret is not None:
     st.markdown("<br>", unsafe_allow_html=True)
 
     # --- TABS DE ANÁLISE ---
-    tab_perf, tab_risk, tab_month, tab_patr = st.tabs([
-        "📈 Rentabilidade Comparativa", 
-        "🛡️ Análise de Risco", 
+    tab_perf, tab_risk, tab_month, tab_patr, tab_proj = st.tabs([
+        "📈 Rentabilidade Comparativa",
+        "🛡️ Análise de Risco",
         "📅 Retornos Mensais",
-        "💰 Evolução Patrimonial"
+        "💰 Evolução Patrimonial",
+        "🔮 Projeções (3 Anos)"
     ])
     
     with tab_perf:
@@ -610,6 +611,157 @@ if port_ret is not None:
             st.metric("Total Investido", f"R$ {total_invested:,.2f}")
             st.metric("Lucro/Prejuízo", f"R$ {profit_loss:,.2f}", 
                       delta=f"{(final_val/total_invested - 1):.1%}")
+
+    with tab_proj:
+        st.subheader("🔮 Projeção de Cenários — Próximos 36 Meses")
+
+        # ------------------------------------------------------------------
+        # PARÂMETROS ESTATÍSTICOS extraídos do histórico real
+        # ------------------------------------------------------------------
+        mu    = port_ret.mean()          # drift mensal histórico
+        sigma = port_ret.std()           # volatilidade mensal histórica
+        N_MONTHS  = 36
+        N_SIM     = 10_000               # número de caminhos Monte Carlo
+        saldo_t0  = port_wealth.iloc[-1] # saldo atual (ponto de partida)
+        last_date = port_wealth.index[-1]
+
+        # ------------------------------------------------------------------
+        # SIMULAÇÃO DE MONTE CARLO
+        # S(t) = S(t-1)·(1 + r_t) + aporte_mensal,  r_t ~ N(µ, σ)
+        # ------------------------------------------------------------------
+        np.random.seed(42)
+        paths = np.empty((N_SIM, N_MONTHS + 1))
+        paths[:, 0] = saldo_t0
+        rand_returns = np.random.normal(mu, sigma, size=(N_SIM, N_MONTHS))
+        for t in range(1, N_MONTHS + 1):
+            paths[:, t] = paths[:, t - 1] * (1 + rand_returns[:, t - 1]) + aporte_mensal
+
+        p_otimista   = np.percentile(paths, 95, axis=0)   # verde
+        p_neutro     = np.percentile(paths, 50, axis=0)   # azul
+        p_pessimista = np.percentile(paths, 5,  axis=0)   # vermelho
+
+        hist_tail    = port_wealth.tail(12)
+        future_dates = pd.date_range(start=last_date, periods=N_MONTHS + 1, freq="ME")[1:]
+        proj_dates   = [last_date] + list(future_dates)
+
+        # ------------------------------------------------------------------
+        # GRÁFICO
+        # ------------------------------------------------------------------
+        fig_proj = go.Figure()
+
+        # Faixa de confiança (preenchimento entre P5 e P95)
+        fig_proj.add_trace(go.Scatter(
+            x=list(proj_dates) + list(reversed(proj_dates)),
+            y=list(p_otimista) + list(reversed(p_pessimista)),
+            fill="toself",
+            fillcolor="rgba(52, 152, 219, 0.09)",
+            line=dict(color="rgba(0,0,0,0)"),
+            showlegend=True,
+            name="Intervalo P5–P95",
+            hoverinfo="skip",
+        ))
+
+        # Histórico real (último ano)
+        fig_proj.add_trace(go.Scatter(
+            x=hist_tail.index,
+            y=hist_tail.values,
+            mode="lines",
+            name="Histórico Real",
+            line=dict(color="#2c3e50", width=3),
+            hovertemplate="<b>Histórico</b><br>%{x|%b/%Y}: R$ %{y:,.0f}<extra></extra>",
+        ))
+
+        # Cenário Otimista — P95
+        fig_proj.add_trace(go.Scatter(
+            x=proj_dates, y=p_otimista,
+            mode="lines", name="Otimista (P95)",
+            line=dict(color="#27ae60", width=2.5, dash="dash"),
+            hovertemplate="<b>Otimista</b><br>%{x|%b/%Y}: R$ %{y:,.0f}<extra></extra>",
+        ))
+
+        # Cenário Neutro — P50
+        fig_proj.add_trace(go.Scatter(
+            x=proj_dates, y=p_neutro,
+            mode="lines", name="Neutro (P50)",
+            line=dict(color="#2980b9", width=2.5, dash="dot"),
+            hovertemplate="<b>Neutro</b><br>%{x|%b/%Y}: R$ %{y:,.0f}<extra></extra>",
+        ))
+
+        # Cenário Pessimista — P5
+        fig_proj.add_trace(go.Scatter(
+            x=proj_dates, y=p_pessimista,
+            mode="lines", name="Pessimista (P5)",
+            line=dict(color="#e74c3c", width=2.5, dash="dash"),
+            hovertemplate="<b>Pessimista</b><br>%{x|%b/%Y}: R$ %{y:,.0f}<extra></extra>",
+        ))
+
+        # Linha vertical "Hoje"
+        fig_proj.add_vline(
+            x=last_date, line_width=1.5, line_dash="dot", line_color="gray",
+            annotation_text=" Hoje", annotation_position="top left",
+            annotation_font_size=12, annotation_font_color="gray",
+        )
+
+        fig_proj.update_layout(
+            template="plotly_white",
+            title=dict(
+                text=(
+                    f"Monte Carlo — {N_SIM:,} simulações | "
+                    f"µ={mu:.2%}/mês | σ={sigma:.2%}/mês | "
+                    f"Aporte R$ {aporte_mensal:,.0f}/mês"
+                ),
+                font_size=13,
+            ),
+            yaxis=dict(title="Saldo (R$)", tickformat=",.0f"),
+            xaxis_title="",
+            legend=dict(orientation="h", y=1.06, x=0.5, xanchor="center"),
+            hovermode="x unified",
+            margin=dict(t=80),
+        )
+        st.plotly_chart(fig_proj, use_container_width=True)
+
+        # ------------------------------------------------------------------
+        # CARDS DE SALDO FINAL
+        # ------------------------------------------------------------------
+        st.markdown("### 📊 Saldo Final Projetado em 36 Meses")
+
+        saldo_otimista   = p_otimista[-1]
+        saldo_neutro     = p_neutro[-1]
+        saldo_pessimista = p_pessimista[-1]
+
+        col_p1, col_p2, col_p3 = st.columns(3)
+        col_p1.metric(
+            label="🟢 Cenário Otimista (P95)",
+            value=f"R$ {saldo_otimista:,.2f}",
+            delta=f"+R$ {saldo_otimista - saldo_t0:,.0f} vs. hoje",
+        )
+        col_p2.metric(
+            label="🔵 Cenário Neutro (P50)",
+            value=f"R$ {saldo_neutro:,.2f}",
+            delta=f"+R$ {saldo_neutro - saldo_t0:,.0f} vs. hoje",
+        )
+        col_p3.metric(
+            label="🔴 Cenário Pessimista (P5)",
+            value=f"R$ {saldo_pessimista:,.2f}",
+            delta=f"R$ {saldo_pessimista - saldo_t0:,.0f} vs. hoje",
+            delta_color="inverse",
+        )
+
+        # ------------------------------------------------------------------
+        # INFORMAÇÕES CONTEXTUAIS
+        # ------------------------------------------------------------------
+        st.markdown("---")
+        col_inf1, col_inf2, col_inf3, col_inf4 = st.columns(4)
+        col_inf1.info(f"**Drift µ:** {mu:.3%}/mês")
+        col_inf2.info(f"**Volatilidade σ:** {sigma:.3%}/mês")
+        col_inf3.info(f"**CAGR implícito:** {(1 + mu)**12 - 1:.1%}/ano")
+        col_inf4.info(f"**Saldo atual:** R$ {saldo_t0:,.2f}")
+
+        st.caption(
+            f"⚠️ Projeções geradas por {N_SIM:,} simulações de Monte Carlo com retornos distribuídos "
+            f"normalmente (µ = {mu:.3%}, σ = {sigma:.3%}), incluindo aporte mensal de "
+            f"R$ {aporte_mensal:,.2f}. Rentabilidade passada não é garantia de retorno futuro."
+        )
 
 else:
     st.info("👈 Configure os parâmetros na barra lateral e aguarde o processamento.")
