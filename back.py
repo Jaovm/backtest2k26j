@@ -546,7 +546,7 @@ if port_ret is not None:
         mu    = port_ret.mean()
         sigma = port_ret.std()
         N_MONTHS  = 36
-        N_SIM     = 10_000
+        N_SIM     = 20_000
         saldo_t0  = port_wealth.iloc[-1]
         last_date = port_wealth.index[-1]
 
