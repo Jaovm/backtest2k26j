@@ -291,7 +291,7 @@ with st.sidebar:
     
     with st.expander("Selecionar Ativos", expanded=False):
         default_stocks = "EGIE3, ITUB3, PSSA3, WEGE3, CXSE3, SBSP3, TAEE3, VIVT3, CPFE3, SAPR3, BBAS3, PRIO3, TOTS3, BPAC3, ALUP3, BMOB3"
-        default_fiis = "ALZR11, BRCO11, BTLG11, HGLG11, HGRE11, HGRU11, KNCR11, KNRI11, LVBI11, MXRF11, PMAL11, XPLG11, XPML11"
+        default_fiis = "ALZR11, BRCO11, BTLG11, HGLG11, HGRE11, HGRU11, KNCR11, KNRI11, LVBI11, MXRF11, PMLL11, XPLG11, XPML11"
         default_etfs = "IVVB11"
         stocks_input = st.text_area("Ações BR", default_stocks)
         fiis_input = st.text_area("FIIs", default_fiis)
