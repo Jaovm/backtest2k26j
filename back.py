@@ -64,54 +64,54 @@ st.markdown("""
 @st.cache_data(show_spinner=False, ttl=86400)
 def get_fundos_cvm(cnpj_dict, start_date, end_date):
     """
-    Versão Sênior: Resolve problemas de colunas duplicadas e índice de tempo.
+    Versão Ultra-Robusta: Identifica fundos por apenas números ou busca textual parcial.
     """
     try:
+        import re
         start_str = start_date.strftime('%d/%m/%y')
         end_str = end_date.strftime('%d/%m/%y')
         cnpjs = list(cnpj_dict.values())
         
-        # Coleta os dados
         df_cvm = getFundsEarnings(*cnpjs, start=start_str, end=end_str)
         
         if df_cvm is None or df_cvm.empty:
             return pd.DataFrame()
 
-        # --- CORREÇÃO 1: GARANTIR DATETIMEINDEX ---
+        # Garante índice temporal
         if 'Date' in df_cvm.columns:
             df_cvm['Date'] = pd.to_datetime(df_cvm['Date'])
             df_cvm.set_index('Date', inplace=True)
         df_cvm.index = pd.to_datetime(df_cvm.index)
         df_cvm = df_cvm.sort_index()
 
-        # --- CORREÇÃO 2: RENOMEAÇÃO E DESDUPLICAÇÃO ---
+        # Mapeamento Inteligente
         new_cols = []
         for col in df_cvm.columns:
             matched_name = "DROP"
+            # Limpa tudo que não é número na coluna retornada pela API
+            col_digits = re.sub(r'\D', '', str(col))
+            
             for short_name, cnpj in cnpj_dict.items():
-                # Compara CNPJ limpo ou nome curto no retorno da API
-                if cnpj.replace('.','').replace('/','') in str(col).replace('.','').replace('/','') or \
-                   short_name.upper() in str(col).upper():
+                cnpj_digits = re.sub(r'\D', '', cnpj)
+                
+                # Se os números baterem OU o nome do fundo estiver na coluna
+                if (len(cnpj_digits) > 10 and cnpj_digits in col_digits) or \
+                   (short_name.split()[0].upper() in str(col).upper()):
                     matched_name = short_name
                     break
             new_cols.append(matched_name)
-        
-# ... (código anterior da função)
         
         df_cvm.columns = new_cols
         if "DROP" in df_cvm.columns:
             df_cvm = df_cvm.drop(columns=["DROP"])
 
-        # CORREÇÃO AQUI: Remove colunas duplicadas sem usar 'axis'
-        # Mantém apenas a primeira ocorrência de cada nome de fundo
+        # Remove duplicatas sem usar o argumento 'axis' (Compatível com Pandas 2.1+)
         df_cvm = df_cvm.loc[:, ~df_cvm.columns.duplicated()]
 
-        # Conversão para retorno mensal
+        # Retorno Mensal
         df_retornos = (df_cvm + 1.0).resample('ME').last().pct_change().dropna(how='all')
-        
-        # ... (restante da função)
 
-        # --- LÓGICA HÍBRIDA (REAL INVESTOR LEGACY) ---
+        # Lógica Real Investor (Mantida)
         legacy_ri = {
             '2012-06': 0.0035, '2012-07': 0.0483, '2012-08': 0.0247, '2012-09': 0.0385, '2012-10': 0.0401, '2012-11': 0.0210, '2012-12': 0.0463,
             '2013-01': 0.0270, '2013-02': -0.0150, '2013-03': -0.0190, '2013-04': 0.0194, '2013-05': 0.0232, '2013-06': -0.0898, '2013-07': 0.0076, '2013-08': 0.0116, '2013-09': 0.0426, '2013-10': 0.0346, '2013-11': -0.0135, '2013-12': -0.0125,
@@ -131,7 +131,7 @@ def get_fundos_cvm(cnpj_dict, start_date, end_date):
         return df_retornos
 
     except Exception as e:
-        st.warning(f"⚠️ Erro na CVM: {e}")
+        st.error(f"Erro na extração CVM: {e}")
         return pd.DataFrame()
 
 @st.cache_data
