@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime
 import requests
+import brfunds as brf
 
 # ==========================================
 # 0. CONFIGURAÇÃO DA PÁGINA
@@ -56,7 +57,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 1. DADOS HARDCODED (FUNDOS ATIVOS)
+# 1. DADOS HARDCODED (FUNDOS ATIVOS - HISTÓRICO ANTIGO)
 # ==========================================
 
 def get_hardcoded_funds():
@@ -149,9 +150,62 @@ def get_hardcoded_funds():
     df.index = pd.to_datetime(df.index).to_period('M').to_timestamp('M')
     return df
 
+
 # ==========================================
-# 2. FUNÇÕES DE DADOS (YFINANCE E BCB)
+# 2. FUNÇÕES DE DADOS (CVM, YFINANCE E BCB)
 # ==========================================
+
+@st.cache_data(show_spinner=False, ttl="24h")
+def get_fundos_cvm(cnpj_dict, start_date, end_date):
+    """
+    Busca o histórico de cotas na CVM via brfunds e converte para retorno mensal.
+    cnpj_dict: dicionário no formato {'Nome Fundo': 'CNPJ'}
+    """
+    df_returns = pd.DataFrame()
+    
+    try:
+        cnpjs = list(cnpj_dict.values())
+        nomes = list(cnpj_dict.keys())
+        
+        df_cotas = brf.get_funds_cotas(cnpjs)
+        
+        if df_cotas is not None and not df_cotas.empty:
+            df_cotas.index = pd.to_datetime(df_cotas.index)
+            
+            mask = (df_cotas.index >= pd.to_datetime(start_date)) & (df_cotas.index <= pd.to_datetime(end_date))
+            df_cotas = df_cotas.loc[mask]
+            
+            if len(df_cotas.columns) == len(nomes):
+                df_cotas.columns = nomes
+                
+                mensal = df_cotas.resample('ME').last()
+                df_returns = mensal.pct_change().dropna()
+                df_returns.index = df_returns.index.to_period('M').to_timestamp('M')
+                
+    except Exception as e:
+        st.warning(f"⚠️ Instabilidade na API da CVM. Usando dados cacheados/estáticos. Erro: {e}")
+        return pd.DataFrame() 
+        
+    return df_returns
+
+def merge_historical_and_api(old_series, new_series):
+    """
+    Realiza o splice híbrido: usa a série hardcoded até o momento em que 
+    os dados da API começam, e então usa os dados da API em diante.
+    """
+    if new_series is None or new_series.empty or new_series.isna().all():
+        return old_series
+    
+    if old_series is None or old_series.empty:
+        return new_series
+        
+    api_start = new_series.dropna().index.min()
+    old_filtered = old_series[old_series.index < api_start]
+    
+    combined = pd.concat([old_filtered, new_series.dropna()])
+    combined = combined[~combined.index.duplicated(keep='last')]
+    
+    return combined.sort_index()
 
 @st.cache_data
 def get_cdi_data(start_date, end_date):
@@ -345,37 +399,62 @@ stock_list = [x.strip() for x in stocks_input.split(',') if x.strip()]
 fii_list = [x.strip() for x in fiis_input.split(',') if x.strip()]
 etf_list = [x.strip() for x in etfs_input.split(',') if x.strip()]
 
-df_funds = get_hardcoded_funds()
+# Mapeamento dos CNPJs dos seus fundos
+fund_cnpjs = {
+    'Tarpon GT': '22.232.927/0001-90',
+    'Absolute Pace': '32.073.525/0001-43',
+    'SPX Patriot': '15.334.585/0001-53', # Favor validar este CNPJ
+    'Real Investor': '10.500.884/0001-05',
+    'Organon FIC FIA': '17.400.251/0001-66'
+}
 
-with st.spinner('Consolidando dados de mercado e taxas (BCB)...'):
+# 1. Carrega os dados hardcoded (histórico antigo/premium)
+df_funds_old = get_hardcoded_funds()
+
+with st.spinner('Consolidando dados de mercado, CVM e taxas (BCB)...'):
+    # Extração de Mercado (Ações, FIIs, ETFs, IBOV, CDI)
     df_stocks = get_market_data(stock_list, start_date, end_date)
     df_fiis = get_market_data(fii_list, start_date, end_date)
     df_etfs = get_market_data(etf_list, start_date, end_date)
     ibov_ret = get_benchmark_data(start_date, end_date)
     cdi_ret = get_cdi_data(start_date, end_date)
+    
+    # Extração da API da CVM
+    df_funds_api = get_fundos_cvm(fund_cnpjs, start_date, end_date)
+    
+    # Mesclagem Híbrida (Manual + API)
+    df_funds_hybrid = pd.DataFrame()
+    for fund_name in fund_cnpjs.keys():
+        old_s = df_funds_old.get(fund_name, pd.Series(dtype=float))
+        api_s = df_funds_api.get(fund_name, pd.Series(dtype=float))
+        df_funds_hybrid[fund_name] = merge_historical_and_api(old_s, api_s)
 
-all_dates = df_funds.index.union(df_stocks.index).union(df_fiis.index).union(df_etfs.index).union(cdi_ret.index)
-if not ibov_ret.empty:
-    all_dates = all_dates.union(ibov_ret.index)
-all_dates = all_dates.sort_values()
+    # Construção do Índice Global Consolidado
+    all_dates = df_funds_hybrid.index.union(df_stocks.index).union(df_fiis.index).union(df_etfs.index).union(cdi_ret.index)
+    if not ibov_ret.empty:
+        all_dates = all_dates.union(ibov_ret.index)
+    all_dates = all_dates.sort_values()
 
-master_df = pd.DataFrame(index=all_dates)
+    master_df = pd.DataFrame(index=all_dates)
 
-if not df_stocks.empty: master_df['Ações Consolidadas'] = df_stocks.mean(axis=1)
-if not df_fiis.empty: master_df['FIIs Consolidados'] = df_fiis.mean(axis=1)
-if not df_etfs.empty: master_df['ETFs Consolidados'] = df_etfs.mean(axis=1)
+    # Atribuição das colunas
+    if not df_stocks.empty: master_df['Ações Consolidadas'] = df_stocks.mean(axis=1)
+    if not df_fiis.empty: master_df['FIIs Consolidados'] = df_fiis.mean(axis=1)
+    if not df_etfs.empty: master_df['ETFs Consolidados'] = df_etfs.mean(axis=1)
 
-master_df['Tarpon GT'] = df_funds['Tarpon GT'].reindex(master_df.index)
-master_df['Absolute Pace'] = df_funds['Absolute Pace'].reindex(master_df.index)
-master_df['CDI'] = cdi_ret.reindex(master_df.index)
-master_df['SPX Patriot'] = df_funds['SPX Patriot'].reindex(master_df.index)
-master_df['Real Investor'] = df_funds['Real Investor'].reindex(master_df.index)
-master_df['Organon FIC FIA'] = df_funds['Organon FIC FIA'].reindex(master_df.index)
+    master_df['Tarpon GT'] = df_funds_hybrid['Tarpon GT'].reindex(master_df.index)
+    master_df['Absolute Pace'] = df_funds_hybrid['Absolute Pace'].reindex(master_df.index)
+    master_df['SPX Patriot'] = df_funds_hybrid['SPX Patriot'].reindex(master_df.index)
+    master_df['Real Investor'] = df_funds_hybrid['Real Investor'].reindex(master_df.index)
+    master_df['Organon FIC FIA'] = df_funds_hybrid['Organon FIC FIA'].reindex(master_df.index)
+    master_df['CDI'] = cdi_ret.reindex(master_df.index)
 
-mask = (master_df.index >= pd.to_datetime(start_date)) & (master_df.index <= pd.to_datetime(end_date))
-master_df = master_df.loc[mask].dropna(how='all').fillna(0)
-ibov_ret = ibov_ret.reindex(master_df.index).fillna(0)
-cdi_ret = cdi_ret.reindex(master_df.index).fillna(0)
+    # Filtragem e limpeza final
+    mask = (master_df.index >= pd.to_datetime(start_date)) & (master_df.index <= pd.to_datetime(end_date))
+    master_df = master_df.loc[mask].dropna(how='all').fillna(0)
+    
+    ibov_ret = ibov_ret.reindex(master_df.index).fillna(0)
+    cdi_ret = cdi_ret.reindex(master_df.index).fillna(0)
 
 weights = {
     'Ações Consolidadas': w_stocks,
@@ -394,7 +473,6 @@ port_pure, port_wealth, port_ret = calculate_portfolio_performance(
 )
 
 if port_ret is not None:
-    # Alinha a série do CDI ao retorno do portfólio para os cálculos
     cdi_ret_series = cdi_ret.reindex(port_ret.index).fillna(0)
     cdi_accum = (1 + cdi_ret_series).cumprod() * 100
     ibov_accum = (1 + ibov_ret).cumprod() * 100
@@ -404,7 +482,6 @@ if port_ret is not None:
     cagr = (1 + total_ret) ** (1/years) - 1 if years > 0 else 0
     vol = port_ret.std() * np.sqrt(12)
     
-    # Sharpe Dinâmico Global
     excess_returns = port_ret - cdi_ret_series
     sharpe = (excess_returns.mean() / port_ret.std()) * np.sqrt(12) if port_ret.std() > 0 else 0
     
