@@ -61,11 +61,13 @@ st.markdown("""
 # 1. FUNÇÕES DE DADOS (CVM / YFINANCE / BCB)
 # ==========================================
 
-@st.cache_data(show_spinner=False, ttl=3600) # Atualiza a cada hora
+@st.cache_data(show_spinner=False, ttl=86400)
 def get_fundos_cvm(cnpj_dict, start_date, end_date):
+    """
+    Versão Ultra-Robusta: Identifica fundos por apenas números ou busca textual parcial.
+    """
     try:
         import re
-        # Ajusta para buscar até hoje, independente do input, para garantir o "live"
         start_str = start_date.strftime('%d/%m/%y')
         end_str = datetime.today().strftime('%d/%m/%y') 
         cnpjs = list(cnpj_dict.values())
@@ -75,35 +77,39 @@ def get_fundos_cvm(cnpj_dict, start_date, end_date):
         if df_cvm is None or df_cvm.empty:
             return pd.DataFrame()
 
+        # Garante índice temporal
+        if 'Date' in df_cvm.columns:
+            df_cvm['Date'] = pd.to_datetime(df_cvm['Date'])
+            df_cvm.set_index('Date', inplace=True)
         df_cvm.index = pd.to_datetime(df_cvm.index)
         df_cvm = df_cvm.sort_index()
 
-        # Mapeamento de colunas (Mantido conforme anterior)
+        # Mapeamento Inteligente
         new_cols = []
         for col in df_cvm.columns:
             matched_name = "DROP"
+            # Limpa tudo que não é número na coluna retornada pela API
             col_digits = re.sub(r'\D', '', str(col))
+            
             for short_name, cnpj in cnpj_dict.items():
                 cnpj_digits = re.sub(r'\D', '', cnpj)
-                if (len(cnpj_digits) > 10 and cnpj_digits in col_digits) or (short_name.split()[0].upper() in str(col).upper()):
+                
+                # Se os números baterem OU o nome do fundo estiver na coluna
+                if (len(cnpj_digits) > 10 and cnpj_digits in col_digits) or \
+                   (short_name.split()[0].upper() in str(col).upper()):
                     matched_name = short_name
                     break
             new_cols.append(matched_name)
         
         df_cvm.columns = new_cols
-        df_cvm = df_cvm.loc[:, ~df_cvm.columns.duplicated()]
-        if "DROP" in df_cvm.columns: df_cvm = df_cvm.drop(columns=["DROP"])
+        if "DROP" in df_cvm.columns:
+            df_cvm = df_cvm.drop(columns=["DROP"])
 
-        # --- MUDANÇA CRITICAL PARA VER O MÊS ATUAL ---
-        # Em vez de apenas resample, pegamos os meses fechados + a última cota disponível
-        df_mensal = df_cvm.resample('ME').last()
-        
-        # Se a última cota do DF original for mais recente que o último mês fechado, adicionamos ela
-        if df_cvm.index[-1] > df_mensal.index[-1]:
-            last_entry = df_cvm.iloc[[-1]]
-            df_mensal = pd.concat([df_mensal, last_entry])
-        
-        df_retornos = df_mensal.pct_change().dropna(how='all')
+        # Remove duplicatas sem usar o argumento 'axis' (Compatível com Pandas 2.1+)
+        df_cvm = df_cvm.loc[:, ~df_cvm.columns.duplicated()]
+
+        # Retorno Mensal
+        df_retornos = (df_cvm + 1.0).resample('ME').last().pct_change().dropna(how='all')
 
         # Lógica Real Investor (Mantida)
         legacy_ri = {
