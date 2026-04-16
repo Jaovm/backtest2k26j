@@ -63,54 +63,56 @@ st.markdown("""
 
 @st.cache_data(show_spinner=False, ttl=86400) # Cache de 24h para não sobrecarregar a API da CVM
 def get_fundos_cvm(cnpj_dict, start_date, end_date):
-    """
-    Busca a rentabilidade acumulada de fundos na CVM, converte para retornos mensais 
-    e faz a junção (híbrida) com dados históricos passados.
-    """
     try:
-        # brfunds requer datas no formato DD/MM/YY
         start_str = start_date.strftime('%d/%m/%y')
         end_str = end_date.strftime('%d/%m/%y')
-        
-        # Extrai a lista de CNPJs do dicionário
         cnpjs = list(cnpj_dict.values())
         
-        # Faz a requisição na API da CVM via brfunds
+        # Chamada da API
         df_cvm = getFundsEarnings(*cnpjs, start=start_str, end=end_str)
         
         if df_cvm is None or df_cvm.empty:
-            st.warning("⚠️ Retorno vazio da API CVM. Usando dados cacheados/vazios.")
             return pd.DataFrame()
 
-        # Garante o índice datetime
-        if 'Date' in df_cvm.columns:
-            df_cvm['Date'] = pd.to_datetime(df_cvm['Date'])
-            df_cvm.set_index('Date', inplace=True)
-            
-        # O brfunds retorna as colunas com a Razão Social longa. 
-        # Vamos renomear para os nossos Nomes Curtos usando substrings para ser robusto.
+        # --- CORREÇÃO DO ERRO DE DATETIMEINDEX ---
+        # 1. Tenta encontrar a coluna de data independente de maiúscula/minúscula
+        df_cvm.columns = [str(c) for c in df_cvm.columns] # Garante que colunas são strings
+        cols_lower = [c.lower() for c in df_cvm.columns]
+        
+        if 'date' in cols_lower:
+            idx = cols_lower.index('date')
+            date_col_actual = df_cvm.columns[idx]
+            df_cvm[date_col_actual] = pd.to_datetime(df_cvm[date_col_actual])
+            df_cvm.set_index(date_col_actual, inplace=True)
+        
+        # 2. Força a conversão do índice (caso a data já tenha vindo no índice mas como objeto/string)
+        df_cvm.index = pd.to_datetime(df_cvm.index)
+        
+        # 3. Ordena o índice (essencial para resample)
+        df_cvm = df_cvm.sort_index()
+
+        # Mapeamento de nomes curtos (melhorado com busca parcial)
         rename_map = {}
-        for long_name in df_cvm.columns:
-            long_name_upper = str(long_name).upper()
-            if 'TARPON' in long_name_upper: rename_map[long_name] = 'Tarpon GT'
-            elif 'ABSOLUTE' in long_name_upper: rename_map[long_name] = 'Absolute Pace'
-            elif 'SPX' in long_name_upper: rename_map[long_name] = 'SPX Patriot'
-            elif 'REAL INVESTOR' in long_name_upper: rename_map[long_name] = 'Real Investor'
-            elif 'ORGANON' in long_name_upper: rename_map[long_name] = 'Organon FIC FIA'
-            
+        for col in df_cvm.columns:
+            col_upper = str(col).upper()
+            for short_name, cnpj in cnpj_dict.items():
+                # Se o CNPJ ou parte do nome estiver na coluna, renomeia
+                if cnpj in col or any(part in col_upper for part in short_name.upper().split()):
+                    rename_map[col] = short_name
+        
         df_cvm.rename(columns=rename_map, inplace=True)
         
-        # Converte rentabilidade acumulada (ex: 0.10) para cota base 1 (ex: 1.10)
+        # Filtra apenas as colunas que mapeamos (evita lixo da API)
+        df_cvm = df_cvm[list(rename_map.values())]
+
+        # Operações Quantitativas
         df_cotas = df_cvm + 1.0
         
-        # Reamostra para o último dia útil do mês e calcula a variação mensal
+        # Agora o resample funcionará pois garantimos o DatetimeIndex acima
         df_mensal = df_cotas.resample('ME').last()
         df_retornos = df_mensal.pct_change().dropna(how='all')
         
-        # ==========================================
-        # LÓGICA HÍBRIDA (INTEGRAÇÃO MANUAL + API)
-        # ==========================================
-        # Seus dados corrigidos do Real Investor (do seu script original)
+        # --- LÓGICA HÍBRIDA (REAL INVESTOR LEGACY) ---
         legacy_real_investor = {
             '2012-06': 0.0035, '2012-07': 0.0483, '2012-08': 0.0247, '2012-09': 0.0385, '2012-10': 0.0401, '2012-11': 0.0210, '2012-12': 0.0463,
             '2013-01': 0.0270, '2013-02': -0.0150, '2013-03': -0.0190, '2013-04': 0.0194, '2013-05': 0.0232, '2013-06': -0.0898, '2013-07': 0.0076, '2013-08': 0.0116, '2013-09': 0.0426, '2013-10': 0.0346, '2013-11': -0.0135, '2013-12': -0.0125,
@@ -120,12 +122,11 @@ def get_fundos_cvm(cnpj_dict, start_date, end_date):
             '2017-01': 0.0607, '2017-02': 0.0487, '2017-03': 0.0016, '2017-04': 0.0154, '2017-05': -0.0229, '2017-06': 0.0118, '2017-07': 0.0558, '2017-08': 0.0620, '2017-09': 0.0519, '2017-10': 0.0119, '2017-11': -0.0250, '2017-12': 0.0494
         }
         
-        # Converte o dicionário em série temporal alinhada
         s_legacy_ri = pd.Series(legacy_real_investor, name='Real Investor')
         s_legacy_ri.index = pd.to_datetime(s_legacy_ri.index).to_period('M').to_timestamp('M')
         
-        # Preenche os buracos históricos da API com a sua base legada estática
         if 'Real Investor' in df_retornos.columns:
+            # Combine_first: usa o dado da API, se não existir, usa o legacy
             df_retornos['Real Investor'] = df_retornos['Real Investor'].combine_first(s_legacy_ri)
         else:
             df_retornos['Real Investor'] = s_legacy_ri
@@ -133,7 +134,9 @@ def get_fundos_cvm(cnpj_dict, start_date, end_date):
         return df_retornos
 
     except Exception as e:
-        st.warning(f"⚠️ Instabilidade na integração com a CVM: {e}. Os fundos podem ficar zerados neste período.")
+        # Log do erro real no console para debug, mas aviso amigável no Streamlit
+        print(f"DEBUG: Erro na função get_fundos_cvm: {e}")
+        st.warning(f"⚠️ Nota: Dados recentes de alguns fundos não estão disponíveis via API (CVM).")
         return pd.DataFrame()
 
 @st.cache_data
