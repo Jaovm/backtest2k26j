@@ -61,59 +61,54 @@ st.markdown("""
 # 1. FUNÇÕES DE DADOS (CVM / YFINANCE / BCB)
 # ==========================================
 
-@st.cache_data(show_spinner=False, ttl=86400) # Cache de 24h para não sobrecarregar a API da CVM
+@st.cache_data(show_spinner=False, ttl=86400)
 def get_fundos_cvm(cnpj_dict, start_date, end_date):
+    """
+    Versão Sênior: Resolve problemas de colunas duplicadas e índice de tempo.
+    """
     try:
         start_str = start_date.strftime('%d/%m/%y')
         end_str = end_date.strftime('%d/%m/%y')
         cnpjs = list(cnpj_dict.values())
         
-        # Chamada da API
+        # Coleta os dados
         df_cvm = getFundsEarnings(*cnpjs, start=start_str, end=end_str)
         
         if df_cvm is None or df_cvm.empty:
             return pd.DataFrame()
 
-        # --- CORREÇÃO DO ERRO DE DATETIMEINDEX ---
-        # 1. Tenta encontrar a coluna de data independente de maiúscula/minúscula
-        df_cvm.columns = [str(c) for c in df_cvm.columns] # Garante que colunas são strings
-        cols_lower = [c.lower() for c in df_cvm.columns]
-        
-        if 'date' in cols_lower:
-            idx = cols_lower.index('date')
-            date_col_actual = df_cvm.columns[idx]
-            df_cvm[date_col_actual] = pd.to_datetime(df_cvm[date_col_actual])
-            df_cvm.set_index(date_col_actual, inplace=True)
-        
-        # 2. Força a conversão do índice (caso a data já tenha vindo no índice mas como objeto/string)
+        # --- CORREÇÃO 1: GARANTIR DATETIMEINDEX ---
+        if 'Date' in df_cvm.columns:
+            df_cvm['Date'] = pd.to_datetime(df_cvm['Date'])
+            df_cvm.set_index('Date', inplace=True)
         df_cvm.index = pd.to_datetime(df_cvm.index)
-        
-        # 3. Ordena o índice (essencial para resample)
         df_cvm = df_cvm.sort_index()
 
-        # Mapeamento de nomes curtos (melhorado com busca parcial)
-        rename_map = {}
+        # --- CORREÇÃO 2: RENOMEAÇÃO E DESDUPLICAÇÃO ---
+        new_cols = []
         for col in df_cvm.columns:
-            col_upper = str(col).upper()
+            matched_name = "DROP"
             for short_name, cnpj in cnpj_dict.items():
-                # Se o CNPJ ou parte do nome estiver na coluna, renomeia
-                if cnpj in col or any(part in col_upper for part in short_name.upper().split()):
-                    rename_map[col] = short_name
+                # Compara CNPJ limpo ou nome curto no retorno da API
+                if cnpj.replace('.','').replace('/','') in str(col).replace('.','').replace('/','') or \
+                   short_name.upper() in str(col).upper():
+                    matched_name = short_name
+                    break
+            new_cols.append(matched_name)
         
-        df_cvm.rename(columns=rename_map, inplace=True)
-        
-        # Filtra apenas as colunas que mapeamos (evita lixo da API)
-        df_cvm = df_cvm[list(rename_map.values())]
+        df_cvm.columns = new_cols
+        if "DROP" in df_cvm.columns:
+            df_cvm = df_cvm.drop(columns=["DROP"])
 
-        # Operações Quantitativas
-        df_cotas = df_cvm + 1.0
-        
-        # Agora o resample funcionará pois garantimos o DatetimeIndex acima
-        df_mensal = df_cotas.resample('ME').last()
-        df_retornos = df_mensal.pct_change().dropna(how='all')
-        
+        # Se a API retornou 2 colunas para o mesmo fundo, pegamos apenas a primeira
+        # Isso evita o erro "Cannot set a DataFrame to single column"
+        df_cvm = df_cvm.groupby(level=0, axis=1).first()
+
+        # Conversão para retorno mensal
+        df_retornos = (df_cvm + 1.0).resample('ME').last().pct_change().dropna(how='all')
+
         # --- LÓGICA HÍBRIDA (REAL INVESTOR LEGACY) ---
-        legacy_real_investor = {
+        legacy_ri = {
             '2012-06': 0.0035, '2012-07': 0.0483, '2012-08': 0.0247, '2012-09': 0.0385, '2012-10': 0.0401, '2012-11': 0.0210, '2012-12': 0.0463,
             '2013-01': 0.0270, '2013-02': -0.0150, '2013-03': -0.0190, '2013-04': 0.0194, '2013-05': 0.0232, '2013-06': -0.0898, '2013-07': 0.0076, '2013-08': 0.0116, '2013-09': 0.0426, '2013-10': 0.0346, '2013-11': -0.0135, '2013-12': -0.0125,
             '2014-01': -0.0384, '2014-02': 0.0122, '2014-03': 0.0610, '2014-04': 0.0315, '2014-05': 0.0132, '2014-06': 0.0378, '2014-07': 0.0203, '2014-08': 0.0760, '2014-09': -0.0543, '2014-10': 0.0306, '2014-11': 0.0253, '2014-12': -0.0354,
@@ -121,22 +116,18 @@ def get_fundos_cvm(cnpj_dict, start_date, end_date):
             '2016-01': -0.0427, '2016-02': 0.0573, '2016-03': 0.1190, '2016-04': 0.0747, '2016-05': -0.0118, '2016-06': 0.0541, '2016-07': 0.0863, '2016-08': 0.0205, '2016-09': 0.0076, '2016-10': 0.0754, '2016-11': -0.0454, '2016-12': 0.0152,
             '2017-01': 0.0607, '2017-02': 0.0487, '2017-03': 0.0016, '2017-04': 0.0154, '2017-05': -0.0229, '2017-06': 0.0118, '2017-07': 0.0558, '2017-08': 0.0620, '2017-09': 0.0519, '2017-10': 0.0119, '2017-11': -0.0250, '2017-12': 0.0494
         }
-        
-        s_legacy_ri = pd.Series(legacy_real_investor, name='Real Investor')
-        s_legacy_ri.index = pd.to_datetime(s_legacy_ri.index).to_period('M').to_timestamp('M')
+        s_legacy = pd.Series(legacy_ri, name='Real Investor')
+        s_legacy.index = pd.to_datetime(s_legacy.index).to_period('M').to_timestamp('M')
         
         if 'Real Investor' in df_retornos.columns:
-            # Combine_first: usa o dado da API, se não existir, usa o legacy
-            df_retornos['Real Investor'] = df_retornos['Real Investor'].combine_first(s_legacy_ri)
+            df_retornos['Real Investor'] = df_retornos['Real Investor'].combine_first(s_legacy)
         else:
-            df_retornos['Real Investor'] = s_legacy_ri
+            df_retornos['Real Investor'] = s_legacy
             
         return df_retornos
 
     except Exception as e:
-        # Log do erro real no console para debug, mas aviso amigável no Streamlit
-        print(f"DEBUG: Erro na função get_fundos_cvm: {e}")
-        st.warning(f"⚠️ Nota: Dados recentes de alguns fundos não estão disponíveis via API (CVM).")
+        st.warning(f"⚠️ Erro na CVM: {e}")
         return pd.DataFrame()
 
 @st.cache_data
