@@ -96,16 +96,20 @@ def get_fundos_cvm(cnpj_dict, start_date, end_date):
                     break
             new_cols.append(matched_name)
         
+# ... (código anterior da função)
+        
         df_cvm.columns = new_cols
         if "DROP" in df_cvm.columns:
             df_cvm = df_cvm.drop(columns=["DROP"])
 
-        # Se a API retornou 2 colunas para o mesmo fundo, pegamos apenas a primeira
-        # Isso evita o erro "Cannot set a DataFrame to single column"
-        df_cvm = df_cvm.groupby(level=0, axis=1).first()
+        # CORREÇÃO AQUI: Remove colunas duplicadas sem usar 'axis'
+        # Mantém apenas a primeira ocorrência de cada nome de fundo
+        df_cvm = df_cvm.loc[:, ~df_cvm.columns.duplicated()]
 
         # Conversão para retorno mensal
         df_retornos = (df_cvm + 1.0).resample('ME').last().pct_change().dropna(how='all')
+        
+        # ... (restante da função)
 
         # --- LÓGICA HÍBRIDA (REAL INVESTOR LEGACY) ---
         legacy_ri = {
@@ -368,19 +372,25 @@ if not df_etfs.empty: master_df['ETFs Consolidados'] = df_etfs.mean(axis=1).rein
 master_df['CDI'] = cdi_ret.reindex(master_df.index)
 
 # 4. Integração SEGURA dos fundos da CVM (Resolve o erro da Organon)
+# ... (após criar o master_df = pd.DataFrame(index=all_dates))
+
+# Integração SEGURA dos fundos da CVM no Master Dataframe
 for fundo in dict_fundos_cnpjs.keys():
     if not df_funds.empty and fundo in df_funds.columns:
-        # O .squeeze() garante que se a API retornar 2 colunas, pegamos apenas uma Series
-        # O .iloc[:, 0] é uma proteção extra caso o squeeze não seja suficiente
-        data_fundo = df_funds[fundo]
-        if isinstance(data_fundo, pd.DataFrame):
-            data_fundo = data_fundo.iloc[:, 0]
+        # Seleciona a coluna do fundo
+        col_data = df_funds[fundo]
         
-        master_df[fundo] = data_fundo.reindex(master_df.index)
+        # Se por algum motivo ainda vier um DataFrame (2 colunas iguais), 
+        # pegamos apenas a primeira para não quebrar a atribuição
+        if isinstance(col_data, pd.DataFrame):
+            col_data = col_data.iloc[:, 0]
+            
+        # Alinha as datas e salva no master
+        master_df[fundo] = col_data.reindex(master_df.index)
     else:
-        master_df[fundo] = 0.0  # Fallback caso o fundo não exista nos dados retornados
+        master_df[fundo] = 0.0  # Fallback
 
-# 5. Limpeza e Sincronização Final
+# Filtro final e limpeza
 mask = (master_df.index >= pd.to_datetime(start_date)) & (master_df.index <= pd.to_datetime(end_date))
 master_df = master_df.loc[mask].fillna(0)
 
