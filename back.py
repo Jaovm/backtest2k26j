@@ -5,6 +5,7 @@ import yfinance as yf
 import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime
+import requests
 
 # ==========================================
 # 0. CONFIGURAÇÃO DA PÁGINA
@@ -84,27 +85,6 @@ def get_hardcoded_funds():
         '2026-01': 0.0517, '2026-02': 0.0163, '2026-03': 0.0092
     }
     
-    sparta_returns = {
-        '2018-09': 0.0037, '2018-10': 0.0049, '2018-11': 0.0066, '2018-12': 0.0058, '2019-01': 0.0073,
-        '2019-02': 0.0075, '2019-03': 0.0066, '2019-04': 0.0060, '2019-05': 0.0070, '2019-06': 0.0062,
-        '2019-07': 0.0039, '2019-08': 0.0021, '2019-09': 0.0015, '2019-10': -0.0060, '2019-11': -0.0126,
-        '2019-12': 0.0080, '2020-01': 0.0077, '2020-02': 0.0022, '2020-03': -0.0112, '2020-04': 0.0022,
-        '2020-05': 0.0000, '2020-06': 0.0075, '2020-07': 0.0096, '2020-08': 0.0072, '2020-09': 0.0034,
-        '2020-10': 0.0084, '2020-11': 0.0027, '2020-12': 0.0061, '2021-01': 0.0087, '2021-02': 0.0050,
-        '2021-03': 0.0100, '2021-04': 0.0060, '2021-05': 0.0051, '2021-06': 0.0116, '2021-07': 0.0079,
-        '2021-08': 0.0089, '2021-09': 0.0056, '2021-10': 0.0082, '2021-11': 0.0100, '2021-12': 0.0075,
-        '2022-01': 0.0091, '2022-02': 0.0100, '2022-03': 0.0110, '2022-04': 0.0096, '2022-05': 0.0155,
-        '2022-06': 0.0113, '2022-07': 0.0110, '2022-08': 0.0106, '2022-09': 0.0091, '2022-10': 0.0014,
-        '2022-11': 0.0068, '2022-12': 0.0108, '2023-01': 0.0040, '2023-02': -0.0102, '2023-03': 0.0131,
-        '2023-04': 0.0088, '2023-05': 0.0297, '2023-06': 0.0249, '2023-07': 0.0257, '2023-08': 0.0187,
-        '2023-09': 0.0098, '2023-10': 0.0103, '2023-11': 0.0121, '2023-12': 0.0117, '2024-01': 0.0166,
-        '2024-02': 0.0243, '2024-03': 0.0105, '2024-04': 0.0057, '2024-05': 0.0093, '2024-06': 0.0075,
-        '2024-07': 0.0118, '2024-08': 0.0124, '2024-09': 0.0129, '2024-10': 0.0097, '2024-11': 0.0036,
-        '2024-12': 0.0070, '2025-01': 0.0101, '2025-02': 0.0130, '2025-03': 0.0110, '2025-04': 0.0130,
-        '2025-05': 0.0107, '2025-06': 0.0157, '2025-07': 0.0147, '2025-08': 0.0180, '2025-09': 0.0211,
-        '2025-10': 0.0060, '2025-11': 0.0103, '2025-12': 0.0095, '2026-01': 0.0112, '2026-02': 0.0130
-    }
-    
     spx_patriot_returns = {
         '2012-07': 0.0035, '2012-08': 0.0366, '2012-09': 0.0304, '2012-10': 0.0190, '2012-11': 0.0153, '2012-12': 0.0488,
         '2013-01': 0.0222, '2013-02': -0.0096, '2013-03': -0.0045, '2013-04': 0.0086, '2013-05': 0.0114, '2013-06': -0.0514, '2013-07': 0.0113, '2013-08': 0.0070, '2013-09': 0.0261, '2013-10': 0.0291, '2013-11': -0.0087, '2013-12': -0.0202,
@@ -161,7 +141,6 @@ def get_hardcoded_funds():
     df = pd.DataFrame({
         'Tarpon GT': pd.Series(tarpon_returns, dtype=float),
         'Absolute Pace': pd.Series(absolute_returns, dtype=float),
-        'Sparta Infra': pd.Series(sparta_returns, dtype=float),
         'SPX Patriot': pd.Series(spx_patriot_returns, dtype=float),
         'Real Investor': pd.Series(real_investor_returns, dtype=float),
         'Organon FIC FIA': pd.Series(organon_returns, dtype=float)
@@ -171,8 +150,33 @@ def get_hardcoded_funds():
     return df
 
 # ==========================================
-# 2. FUNÇÕES DE DADOS (YFINANCE)
+# 2. FUNÇÕES DE DADOS (YFINANCE E BCB)
 # ==========================================
+
+@st.cache_data
+def get_cdi_data(start_date, end_date):
+    """Busca o CDI mensal (Série 4391) na API do BCB."""
+    url = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.4391/dados?formato=json"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        
+        df = pd.DataFrame(data)
+        df['data'] = pd.to_datetime(df['data'], format='%d/%m/%Y')
+        df.set_index('data', inplace=True)
+        df['valor'] = df['valor'].astype(float) / 100.0  # Transforma em decimal
+        
+        mask = (df.index >= pd.to_datetime(start_date)) & (df.index <= pd.to_datetime(end_date))
+        cdi_series = df.loc[mask, 'valor']
+        cdi_series = cdi_series.resample('ME').last()
+        cdi_series.name = 'CDI'
+        
+        return cdi_series
+    except Exception as e:
+        st.error(f"Erro ao baixar dados do CDI (BCB): {e}")
+        return pd.Series(dtype='float64')
+
 @st.cache_data
 def get_market_data(tickers, start_date, end_date):
     if not tickers:
@@ -304,8 +308,6 @@ with st.sidebar:
     end_date = col_d2.date_input("Fim", max_date, min_value=min_date, max_value=max_date)
     
     rebalance_freq = st.selectbox("Rebalanceamento", ["Mensal", "Anual"])
-    rf_rate_annual = st.number_input("Taxa CDI/Livre de Risco (% a.a.)", value=10.0, step=0.5)
-    rf_rate_monthly = (1 + rf_rate_annual/100)**(1/12) - 1
 
     aporte_mensal = st.number_input("Aporte Mensal (R$)", value=1000.0, step=100.0)
     investimento_inicial = st.number_input("Investimento Inicial (R$)", value=100000.0, step=1000.0)
@@ -315,7 +317,7 @@ with st.sidebar:
     
     with st.expander("Selecionar Ativos", expanded=False):
         default_stocks = "EGIE3, ITUB3, PSSA3, WEGE3, CXSE3, SBSP3, TAEE3, VIVT3, CPFE3, SAPR3, BBAS3, PRIO3, TOTS3, BPAC3, ALUP3, BMOB3"
-        default_fiis = "ALZR11, BRCO11, BTLG11, HGLG11, HGRE11, HGRU11, KNCR11, KNRI11, LVBI11, MXRF11, PMLL11, XPLG11, XPML11"
+        default_fiis = "ALZR11, BRCO11, BTLG11, HGLG11, HGRE11, HGRU11, KNCR11, KNRI11, LVBI11, MXRF11, MALL11, XPLG11, XPML11"
         default_etfs = "IVVB11"
         stocks_input = st.text_area("Ações BR", default_stocks)
         fiis_input = st.text_area("FIIs", default_fiis)
@@ -326,16 +328,16 @@ with st.sidebar:
     w_fiis = st.slider("FIIs", 0, 100, 0)
     w_etfs = st.slider("ETFs", 0, 100, 20)
     
-    st.markdown("**Fundos Ativos**")
+    st.markdown("**Fundos Ativos & Caixa**")
     col_f1, col_f2 = st.columns(2)
     w_tarpon = col_f1.number_input("Tarpon GT", 0, 100, 10)
     w_absolute = col_f2.number_input("Absolute Pace", 0, 100, 25)
-    w_sparta = col_f1.number_input("Sparta Infra", 0, 100, 0)
+    w_cdi = col_f1.number_input("CDI", 0, 100, 0)
     w_spx = col_f2.number_input("SPX Patriot", 0, 100, 0)
     w_real = col_f1.number_input("Real Investor", 0, 100, 0)
     w_organon = col_f2.number_input("Organon FIC", 0, 100, 10)
     
-    total_w = w_stocks + w_fiis + w_etfs + w_tarpon + w_absolute + w_sparta + w_spx + w_real + w_organon
+    total_w = w_stocks + w_fiis + w_etfs + w_tarpon + w_absolute + w_cdi + w_spx + w_real + w_organon
     if total_w != 100:
         st.warning(f"Total: {total_w}%. Será normalizado.")
 
@@ -345,13 +347,14 @@ etf_list = [x.strip() for x in etfs_input.split(',') if x.strip()]
 
 df_funds = get_hardcoded_funds()
 
-with st.spinner('Consolidando dados de mercado...'):
+with st.spinner('Consolidando dados de mercado e taxas (BCB)...'):
     df_stocks = get_market_data(stock_list, start_date, end_date)
     df_fiis = get_market_data(fii_list, start_date, end_date)
     df_etfs = get_market_data(etf_list, start_date, end_date)
     ibov_ret = get_benchmark_data(start_date, end_date)
+    cdi_ret = get_cdi_data(start_date, end_date)
 
-all_dates = df_funds.index.union(df_stocks.index).union(df_fiis.index).union(df_etfs.index)
+all_dates = df_funds.index.union(df_stocks.index).union(df_fiis.index).union(df_etfs.index).union(cdi_ret.index)
 if not ibov_ret.empty:
     all_dates = all_dates.union(ibov_ret.index)
 all_dates = all_dates.sort_values()
@@ -364,7 +367,7 @@ if not df_etfs.empty: master_df['ETFs Consolidados'] = df_etfs.mean(axis=1)
 
 master_df['Tarpon GT'] = df_funds['Tarpon GT'].reindex(master_df.index)
 master_df['Absolute Pace'] = df_funds['Absolute Pace'].reindex(master_df.index)
-master_df['Sparta Infra'] = df_funds['Sparta Infra'].reindex(master_df.index)
+master_df['CDI'] = cdi_ret.reindex(master_df.index)
 master_df['SPX Patriot'] = df_funds['SPX Patriot'].reindex(master_df.index)
 master_df['Real Investor'] = df_funds['Real Investor'].reindex(master_df.index)
 master_df['Organon FIC FIA'] = df_funds['Organon FIC FIA'].reindex(master_df.index)
@@ -372,6 +375,7 @@ master_df['Organon FIC FIA'] = df_funds['Organon FIC FIA'].reindex(master_df.ind
 mask = (master_df.index >= pd.to_datetime(start_date)) & (master_df.index <= pd.to_datetime(end_date))
 master_df = master_df.loc[mask].dropna(how='all').fillna(0)
 ibov_ret = ibov_ret.reindex(master_df.index).fillna(0)
+cdi_ret = cdi_ret.reindex(master_df.index).fillna(0)
 
 weights = {
     'Ações Consolidadas': w_stocks,
@@ -379,7 +383,7 @@ weights = {
     'ETFs Consolidados': w_etfs,
     'Tarpon GT': w_tarpon,
     'Absolute Pace': w_absolute,
-    'Sparta Infra': w_sparta,
+    'CDI': w_cdi,
     'SPX Patriot': w_spx,
     'Real Investor': w_real,
     'Organon FIC FIA': w_organon
@@ -390,7 +394,8 @@ port_pure, port_wealth, port_ret = calculate_portfolio_performance(
 )
 
 if port_ret is not None:
-    cdi_ret_series = pd.Series(rf_rate_monthly, index=port_ret.index)
+    # Alinha a série do CDI ao retorno do portfólio para os cálculos
+    cdi_ret_series = cdi_ret.reindex(port_ret.index).fillna(0)
     cdi_accum = (1 + cdi_ret_series).cumprod() * 100
     ibov_accum = (1 + ibov_ret).cumprod() * 100
     
@@ -398,7 +403,10 @@ if port_ret is not None:
     years = len(port_ret) / 12
     cagr = (1 + total_ret) ** (1/years) - 1 if years > 0 else 0
     vol = port_ret.std() * np.sqrt(12)
-    sharpe = (port_ret.mean() - rf_rate_monthly) / port_ret.std() * np.sqrt(12) if port_ret.std() > 0 else 0
+    
+    # Sharpe Dinâmico Global
+    excess_returns = port_ret - cdi_ret_series
+    sharpe = (excess_returns.mean() / port_ret.std()) * np.sqrt(12) if port_ret.std() > 0 else 0
     
     cum_ret = (1 + port_ret).cumprod()
     peak = cum_ret.cummax()
@@ -411,7 +419,7 @@ if port_ret is not None:
     col1.markdown(f"<div class='metric-card'><div class='metric-value'>{total_ret:.1%}</div><div class='metric-label'>Retorno Total</div></div>", unsafe_allow_html=True)
     col2.markdown(f"<div class='metric-card'><div class='metric-value'>{cagr:.1%}</div><div class='metric-label'>CAGR (a.a.)</div></div>", unsafe_allow_html=True)
     col3.markdown(f"<div class='metric-card'><div class='metric-value'>{vol:.1%}</div><div class='metric-label'>Volatilidade</div></div>", unsafe_allow_html=True)
-    col4.markdown(f"<div class='metric-card'><div class='metric-value'>{sharpe:.2f}</div><div class='metric-label'>Sharpe</div></div>", unsafe_allow_html=True)
+    col4.markdown(f"<div class='metric-card'><div class='metric-value'>{sharpe:.2f}</div><div class='metric-label'>Sharpe (vs. CDI)</div></div>", unsafe_allow_html=True)
     col5.markdown(f"<div class='metric-card'><div class='metric-value' style='color:red'>{max_dd:.1%}</div><div class='metric-label'>Max Drawdown</div></div>", unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
@@ -429,7 +437,7 @@ if port_ret is not None:
         df_chart = pd.DataFrame({
             'Seu Portfólio': port_pure,
             'Ibovespa': ibov_accum,
-            'CDI (Teórico)': cdi_accum
+            'CDI Real (BCB)': cdi_accum
         })
         
         fig = px.line(df_chart, title="Comparativo de Rentabilidade Acumulada")
@@ -501,10 +509,12 @@ if port_ret is not None:
         sharpe_results = {}
         for label, months in sharpe_periods.items():
             if len(port_ret) >= months:
-                subset = port_ret.tail(months)
-                vol_subset = subset.std()
+                subset_port = port_ret.tail(months)
+                subset_cdi = cdi_ret_series.tail(months)
+                vol_subset = subset_port.std()
                 if vol_subset > 0:
-                    sharpe_val = (subset.mean() - rf_rate_monthly) / vol_subset * np.sqrt(12)
+                    excess_subset = subset_port - subset_cdi
+                    sharpe_val = (excess_subset.mean() / vol_subset) * np.sqrt(12)
                     sharpe_results[label] = sharpe_val
                 else:
                     sharpe_results[label] = 0.0
@@ -518,7 +528,7 @@ if port_ret is not None:
             .background_gradient(cmap='Blues', axis=1, vmin=0, vmax=2),
             width="stretch"
         )
-        st.caption(f"ℹ️ O cálculo utiliza a Taxa Livre de Risco definida na barra lateral ({rf_rate_annual}% a.a.) e anualiza a volatilidade mensal.")
+        st.caption("ℹ️ O cálculo de excesso de retorno utiliza o histórico real e dinâmico da série do CDI (BCB), anualizando a volatilidade.")
 
     with tab_patr:
         st.subheader("Evolução do Saldo em Conta")
@@ -615,7 +625,6 @@ if port_ret is not None:
             hovertemplate="<b>Pessimista</b><br>%{x|%b/%Y}: R$ %{y:,.0f}<extra></extra>",
         ))
 
-        # CORREÇÃO CRÍTICA AQUI: Separar o add_vline do texto contorna o bug do Pandas 2.2+ no Plotly
         fig_proj.add_vline(
             x=last_date,
             line_width=1.5,
