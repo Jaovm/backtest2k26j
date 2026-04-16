@@ -328,6 +328,10 @@ dict_fundos_cnpjs = {
     'Organon FIC FIA': '17.400.251/0001-66'
 }
 
+# ==========================================
+# CONSOLIDAÇÃO DOS DADOS NO MASTER_DF
+# ==========================================
+
 with st.spinner('Consolidando dados de mercado, taxas e fundos CVM...'):
     df_stocks = get_market_data(stock_list, start_date, end_date)
     df_fiis = get_market_data(fii_list, start_date, end_date)
@@ -335,52 +339,69 @@ with st.spinner('Consolidando dados de mercado, taxas e fundos CVM...'):
     ibov_ret = get_benchmark_data(start_date, end_date)
     cdi_ret = get_cdi_data(start_date, end_date)
     
-    # Nova extração automatizada
+    # Busca os fundos na CVM com a nova lógica robusta
     df_funds = get_fundos_cvm(dict_fundos_cnpjs, start_date, end_date)
 
-# Agrupando todos os índices de data possíveis
-all_dates = pd.DatetimeIndex([])
-if not df_stocks.empty: all_dates = all_dates.union(df_stocks.index)
-if not df_fiis.empty: all_dates = all_dates.union(df_fiis.index)
-if not df_etfs.empty: all_dates = all_dates.union(df_etfs.index)
-if not cdi_ret.empty: all_dates = all_dates.union(cdi_ret.index)
-if not df_funds.empty: all_dates = all_dates.union(df_funds.index)
-if not ibov_ret.empty: all_dates = all_dates.union(ibov_ret.index)
+# 1. Agrupando todos os índices de data possíveis (Garantindo DatetimeIndex)
+all_indices = []
+for d in [df_stocks, df_fiis, df_etfs, cdi_ret, df_funds, ibov_ret]:
+    if d is not None and not d.empty:
+        all_indices.append(d.index)
 
-all_dates = all_dates.sort_values()
+if all_indices:
+    all_dates = all_indices[0]
+    for idx in all_indices[1:]:
+        all_dates = all_dates.union(idx)
+    all_dates = pd.to_datetime(all_dates).sort_values()
+else:
+    st.error("Erro: Nenhum dado foi retornado das APIs. Verifique sua conexão ou ativos.")
+    st.stop()
+
+# 2. Criando o Master Dataframe
 master_df = pd.DataFrame(index=all_dates)
 
-if not df_stocks.empty: master_df['Ações Consolidadas'] = df_stocks.mean(axis=1)
-if not df_fiis.empty: master_df['FIIs Consolidados'] = df_fiis.mean(axis=1)
-if not df_etfs.empty: master_df['ETFs Consolidados'] = df_etfs.mean(axis=1)
+# 3. Populando Ativos de Mercado (Média das colunas caso haja múltiplos tickers)
+if not df_stocks.empty: master_df['Ações Consolidadas'] = df_stocks.mean(axis=1).reindex(master_df.index)
+if not df_fiis.empty: master_df['FIIs Consolidados'] = df_fiis.mean(axis=1).reindex(master_df.index)
+if not df_etfs.empty: master_df['ETFs Consolidados'] = df_etfs.mean(axis=1).reindex(master_df.index)
 
 master_df['CDI'] = cdi_ret.reindex(master_df.index)
 
-# Integração segura dos fundos da CVM no Master Dataframe
+# 4. Integração SEGURA dos fundos da CVM (Resolve o erro da Organon)
 for fundo in dict_fundos_cnpjs.keys():
     if not df_funds.empty and fundo in df_funds.columns:
-        master_df[fundo] = df_funds[fundo].reindex(master_df.index)
+        # O .squeeze() garante que se a API retornar 2 colunas, pegamos apenas uma Series
+        # O .iloc[:, 0] é uma proteção extra caso o squeeze não seja suficiente
+        data_fundo = df_funds[fundo]
+        if isinstance(data_fundo, pd.DataFrame):
+            data_fundo = data_fundo.iloc[:, 0]
+        
+        master_df[fundo] = data_fundo.reindex(master_df.index)
     else:
-        master_df[fundo] = 0.0  # Asserção de fallback caso a CVM não retorne
+        master_df[fundo] = 0.0  # Fallback caso o fundo não exista nos dados retornados
 
-# Filtro final de datas
+# 5. Limpeza e Sincronização Final
 mask = (master_df.index >= pd.to_datetime(start_date)) & (master_df.index <= pd.to_datetime(end_date))
-master_df = master_df.loc[mask].dropna(how='all').fillna(0)
-ibov_ret = ibov_ret.reindex(master_df.index).fillna(0)
-cdi_ret = cdi_ret.reindex(master_df.index).fillna(0)
+master_df = master_df.loc[mask].fillna(0)
 
+# Alinhando Benchmarks ao Master
+ibov_ret = ibov_ret.reindex(master_df.index).fillna(0)
+cdi_ret_series = cdi_ret.reindex(master_df.index).fillna(0)
+
+# Dicionário de Pesos para o cálculo
 weights = {
-    'Ações Consolidadas': w_stocks,
-    'FIIs Consolidados': w_fiis,
-    'ETFs Consolidados': w_etfs,
-    'Tarpon GT': w_tarpon,
-    'Absolute Pace': w_absolute,
-    'CDI': w_cdi,
-    'SPX Patriot': w_spx,
-    'Real Investor': w_real,
-    'Organon FIC FIA': w_organon
+    'Ações Consolidadas': w_stocks / 100,
+    'FIIs Consolidados': w_fiis / 100,
+    'ETFs Consolidados': w_etfs / 100,
+    'Tarpon GT': w_tarpon / 100,
+    'Absolute Pace': w_absolute / 100,
+    'CDI': w_cdi / 100,
+    'SPX Patriot': w_spx / 100,
+    'Real Investor': w_real / 100,
+    'Organon FIC FIA': w_organon / 100
 }
 
+# Chamada do Motor de Backtest
 port_pure, port_wealth, port_ret = calculate_portfolio_performance(
     master_df, weights, investimento_inicial, aporte_mensal, rebalance_freq
 )
