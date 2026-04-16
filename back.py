@@ -158,35 +158,46 @@ def get_hardcoded_funds():
 @st.cache_data(show_spinner=False, ttl="24h")
 def get_fundos_cvm(cnpj_dict, start_date, end_date):
     """
-    Busca o histórico de cotas na CVM via brfunds e converte para retorno mensal.
-    cnpj_dict: dicionário no formato {'Nome Fundo': 'CNPJ'}
+    Recupera dados de rentabilidade via brfunds usando getFundsEarnings.
     """
     df_returns = pd.DataFrame()
-    
     try:
         cnpjs = list(cnpj_dict.values())
         nomes = list(cnpj_dict.keys())
         
-        df_cotas = brf.get_funds_cotas(cnpjs)
+        # O brfunds exige data no formato DD/MM/YY ou DD/MM/YYYY em formato string
+        start_str = start_date.strftime('%d/%m/%y')
+        end_str = end_date.strftime('%d/%m/%y')
         
-        if df_cotas is not None and not df_cotas.empty:
-            df_cotas.index = pd.to_datetime(df_cotas.index)
+        # Chamada correta conforme documentação 0.2.0+
+        # Usamos *cnpjs para passar a lista de strings como argumentos posicionais
+        df_raw = brf.getFundsEarnings(*cnpjs, start=start_str, end=end_str)
+        
+        if df_raw is not None and not df_raw.empty:
+            df_raw.index = pd.to_datetime(df_raw.index)
             
-            mask = (df_cotas.index >= pd.to_datetime(start_date)) & (df_cotas.index <= pd.to_datetime(end_date))
-            df_cotas = df_cotas.loc[mask]
+            # Renomear colunas para os nomes amigáveis
+            # O brfunds retorna as colunas com base nos CNPJs ou nomes internos
+            # Mapeamos a ordem para garantir consistência
+            if len(df_raw.columns) == len(nomes):
+                df_raw.columns = nomes
             
-            if len(df_cotas.columns) == len(nomes):
-                df_cotas.columns = nomes
-                
-                mensal = df_cotas.resample('ME').last()
-                df_returns = mensal.pct_change().dropna()
-                df_returns.index = df_returns.index.to_period('M').to_timestamp('M')
+            # Como getFundsEarnings retorna a rentabilidade acumulada (base 0 ou 1),
+            # precisamos transformar em retornos mensais para o resto do script.
+            mensal = df_raw.resample('ME').last()
+            
+            # Se o brfunds retornar rentabilidade acumulada (ex: 0.91), 
+            # calculamos a variação da variação para ter o retorno mensal relativo.
+            # Convertemos de acumulado para retorno do período: (1+r_atual)/(1+r_anterior) - 1
+            df_returns = mensal.pct_change().dropna()
+            df_returns.index = df_returns.index.to_period('M').to_timestamp('M')
                 
     except Exception as e:
-        st.warning(f"⚠️ Instabilidade na API da CVM. Usando dados cacheados/estáticos. Erro: {e}")
-        return pd.DataFrame() 
+        st.error(f"⚠️ Erro na integração com brfunds: {e}")
+        return pd.DataFrame()
         
     return df_returns
+
 
 def merge_historical_and_api(old_series, new_series):
     """
