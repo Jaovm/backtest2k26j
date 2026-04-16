@@ -126,46 +126,26 @@ def get_fundos_cvm(cnpj_dict, start_date, end_date):
 
 
 def merge_historical_and_api(old_series, new_series):
-    """
-    Realiza o splice híbrido: usa a série hardcoded até o momento em que 
-    os dados da API começam, e então usa os dados da API em diante.
-    """
-    if new_series is None or new_series.empty or new_series.isna().all():
+    if new_series is None or new_series.empty:
         return old_series
-    
-    if old_series is None or old_series.empty:
-        return new_series
-        
     api_start = new_series.dropna().index.min()
     old_filtered = old_series[old_series.index < api_start]
-    
     combined = pd.concat([old_filtered, new_series.dropna()])
-    combined = combined[~combined.index.duplicated(keep='last')]
-    
     return combined.sort_index()
 
 @st.cache_data
 def get_cdi_data(start_date, end_date):
-    """Busca o CDI mensal (Série 4391) na API do BCB."""
     url = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.4391/dados?formato=json"
     try:
         response = requests.get(url)
-        response.raise_for_status()
         data = response.json()
-        
         df = pd.DataFrame(data)
         df['data'] = pd.to_datetime(df['data'], format='%d/%m/%Y')
         df.set_index('data', inplace=True)
-        df['valor'] = df['valor'].astype(float) / 100.0  # Transforma em decimal
-        
+        df['valor'] = df['valor'].astype(float) / 100.0
         mask = (df.index >= pd.to_datetime(start_date)) & (df.index <= pd.to_datetime(end_date))
-        cdi_series = df.loc[mask, 'valor']
-        cdi_series = cdi_series.resample('ME').last()
-        cdi_series.name = 'CDI'
-        
-        return cdi_series
-    except Exception as e:
-        st.error(f"Erro ao baixar dados do CDI (BCB): {e}")
+        return df.loc[mask, 'valor'].resample('ME').last()
+    except:
         return pd.Series(dtype='float64')
 
 @st.cache_data
