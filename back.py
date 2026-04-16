@@ -6,7 +6,8 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime
 import requests
-import brfunds as brf
+import warnings
+from brfunds import getFundsEarnings
 
 # ==========================================
 # 0. CONFIGURAÇÃO DA PÁGINA
@@ -18,7 +19,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS Customizado
+# CSS Customizado estilo "Financial Dashboard"
 st.markdown("""
 <style>
     .metric-card {
@@ -38,120 +39,130 @@ st.markdown("""
         font-size: 14px;
         color: #7f8c8d;
     }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 24px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: #f8f9fa;
+        border-radius: 4px 4px 0px 0px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #ffffff;
+        border-bottom: 2px solid #4CAF50;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 1. DADOS HARDCODED (HISTÓRICO PREMIUM/ANTIGO)
-# ==========================================
-def get_hardcoded_funds():
-    # Mantendo os dados históricos que você já possui
-    tarpon_returns = {
-        '2018-01': 0.0721, '2018-02': 0.0003, '2018-03': 0.0306, '2018-04': -0.0229, '2018-05': -0.1069, '2018-06': -0.0888, '2018-07': 0.0823, '2018-08': -0.0363, '2018-09': -0.0203, '2018-10': 0.2285, '2018-11': 0.0805, '2018-12': 0.0432,
-        '2019-01': 0.0721, '2019-02': 0.0366, '2019-03': -0.0144, '2019-04': 0.0328, '2019-05': 0.0350, '2019-06': 0.0300, '2019-07': 0.0507, '2019-08': 0.0145, '2019-09': 0.0070, '2019-10': -0.0013, '2019-11': 0.0051, '2019-12': 0.1658,
-        '2020-01': 0.0140, '2020-02': -0.0663, '2020-03': -0.2902, '2020-04': 0.0864, '2020-05': 0.0858, '2020-06': 0.2421, '2020-07': 0.0899, '2020-08': -0.0260, '2020-09': -0.0425, '2020-10': -0.0183, '2020-11': 0.0902, '2020-12': 0.0696,
-        '2021-01': -0.0338, '2021-02': 0.0527, '2021-03': 0.0302, '2021-04': 0.1080, '2021-05': 0.0553, '2021-06': 0.0310, '2021-07': -0.0110, '2021-08': -0.0643, '2021-09': 0.0091, '2021-10': -0.0284, '2021-11': -0.0656, '2021-12': 0.0879,
-        '2022-01': 0.0128, '2022-02': 0.0552, '2022-03': 0.0762, '2022-04': -0.0622, '2022-05': 0.0010, '2022-06': -0.1066, '2022-07': 0.0968, '2022-08': 0.1024, '2022-09': 0.0365, '2022-10': 0.1124, '2022-11': -0.1026, '2022-12': -0.0475,
-        '2023-01': 0.0232, '2023-02': -0.0252, '2023-03': -0.0407, '2023-04': 0.0451, '2023-05': 0.1327, '2023-06': 0.1013, '2023-07': 0.0592, '2023-08': -0.0212, '2023-09': 0.0768, '2023-10': -0.0605, '2023-11': 0.0806, '2023-12': 0.0986,
-        '2024-01': -0.0617, '2024-02': 0.0224, '2024-03': 0.0673, '2024-04': -0.0233, '2024-05': -0.0324, '2024-06': 0.0021, '2024-07': 0.0210, '2024-08': 0.0392, '2024-09': -0.0029, '2024-10': 0.0052, '2024-11': -0.0301, '2024-12': -0.0072,
-        '2025-01': 0.0430, '2025-02': 0.0259, '2025-03': 0.0748, '2025-04': 0.0748, '2025-05': 0.0033, '2025-06': 0.0160, '2025-07': -0.0698, '2025-08': 0.0364, '2025-09': 0.0059, '2025-10': 0.0229, '2025-11': 0.1059, '2025-12': -0.0071,
-        '2026-01': 0.0596, '2026-02': 0.0156
-    }
-    absolute_returns = {
-        '2018-12': 0.0209,
-        '2019-01': 0.1064, '2019-02': 0.0345, '2019-03': 0.0295, '2019-04': 0.0270, '2019-05': 0.0213, '2019-06': 0.0414, '2019-07': 0.0496, '2019-08': 0.0184, '2019-09': 0.0124, '2019-10': 0.0445, '2019-11': 0.0254, '2019-12': 0.1110,
-        '2020-01': 0.0176, '2020-02': -0.0754, '2020-03': -0.2341, '2020-04': 0.1210, '2020-05': 0.0542, '2020-06': 0.0837, '2020-07': 0.0820, '2020-08': -0.0123, '2020-09': -0.0692, '2020-10': -0.0049, '2020-11': 0.1372, '2020-12': 0.0549,
-        '2021-01': -0.0237, '2021-02': -0.0202, '2021-03': 0.0648, '2021-04': 0.0517, '2021-05': 0.0459, '2021-06': 0.0108, '2021-07': -0.0279, '2021-08': -0.0126, '2021-09': -0.0242, '2021-10': -0.0528, '2021-11': 0.0250, '2021-12': 0.0513,
-        '2022-01': 0.0501, '2022-02': -0.0032, '2022-03': 0.0664, '2022-04': -0.0125, '2022-05': 0.0610, '2022-06': -0.0780, '2022-07': 0.0266, '2022-08': 0.0472, '2022-09': -0.0240, '2022-10': 0.0315, '2022-11': -0.0039, '2022-12': -0.0108,
-        '2023-01': 0.0027, '2023-02': -0.0244, '2023-03': -0.0051, '2023-04': 0.0224, '2023-05': 0.0488, '2023-06': 0.0968, '2023-07': 0.0495, '2023-08': -0.0263, '2023-09': -0.0063, '2023-10': -0.0395, '2023-11': 0.0958, '2023-12': 0.0395,
-        '2024-01': -0.0030, '2024-02': 0.0278, '2024-03': 0.0135, '2024-04': -0.0358, '2024-05': -0.0210, '2024-06': 0.0064, '2024-07': 0.0471, '2024-08': 0.0458, '2024-09': -0.0259, '2024-10': -0.0202, '2024-11': -0.0387, '2024-12': -0.0390,
-        '2025-01': 0.0551, '2025-02': -0.0286, '2025-03': 0.0365, '2025-04': 0.0824, '2025-05': 0.0670, '2025-06': 0.0254, '2025-07': -0.0583, '2025-08': 0.0613, '2025-09': 0.0498, '2025-10': 0.0088, '2025-11': 0.0618, '2025-12': -0.0217,
-        '2026-01': 0.0517, '2026-02': 0.0163, '2026-03': 0.0092
-    }
-
-    df = pd.DataFrame({
-        'Tarpon GT': pd.Series(tarpon_returns, dtype=float),
-        'Absolute Pace': pd.Series(absolute_returns, dtype=float)
-    })
-    df.index = pd.to_datetime(df.index).to_period('M').to_timestamp('M')
-    return df
-
-
-# ==========================================
-# 2. FUNÇÕES DE DADOS (CVM, YFINANCE E BCB)
+# 1. FUNÇÕES DE DADOS (CVM / YFINANCE / BCB)
 # ==========================================
 
-@st.cache_data(show_spinner=False, ttl="24h")
+@st.cache_data(show_spinner=False, ttl=86400) # Cache de 24h para não sobrecarregar a API da CVM
 def get_fundos_cvm(cnpj_dict, start_date, end_date):
     """
-    Recupera dados de rentabilidade via brfunds usando getFundsEarnings.
+    Busca a rentabilidade acumulada de fundos na CVM, converte para retornos mensais 
+    e faz a junção (híbrida) com dados históricos passados.
     """
-    df_returns = pd.DataFrame()
     try:
-        cnpjs = list(cnpj_dict.values())
-        nomes = list(cnpj_dict.keys())
-        
-        # O brfunds exige data no formato DD/MM/YY ou DD/MM/YYYY em formato string
+        # brfunds requer datas no formato DD/MM/YY
         start_str = start_date.strftime('%d/%m/%y')
         end_str = end_date.strftime('%d/%m/%y')
         
-        # Chamada correta conforme documentação 0.2.0+
-        # Usamos *cnpjs para passar a lista de strings como argumentos posicionais
-        df_raw = brf.getFundsEarnings(*cnpjs, start=start_str, end=end_str)
+        # Extrai a lista de CNPJs do dicionário
+        cnpjs = list(cnpj_dict.values())
         
-        if df_raw is not None and not df_raw.empty:
-            df_raw.index = pd.to_datetime(df_raw.index)
+        # Faz a requisição na API da CVM via brfunds
+        df_cvm = getFundsEarnings(*cnpjs, start=start_str, end=end_str)
+        
+        if df_cvm is None or df_cvm.empty:
+            st.warning("⚠️ Retorno vazio da API CVM. Usando dados cacheados/vazios.")
+            return pd.DataFrame()
+
+        # Garante o índice datetime
+        if 'Date' in df_cvm.columns:
+            df_cvm['Date'] = pd.to_datetime(df_cvm['Date'])
+            df_cvm.set_index('Date', inplace=True)
             
-            # Renomear colunas para os nomes amigáveis
-            # O brfunds retorna as colunas com base nos CNPJs ou nomes internos
-            # Mapeamos a ordem para garantir consistência
-            if len(df_raw.columns) == len(nomes):
-                df_raw.columns = nomes
+        # O brfunds retorna as colunas com a Razão Social longa. 
+        # Vamos renomear para os nossos Nomes Curtos usando substrings para ser robusto.
+        rename_map = {}
+        for long_name in df_cvm.columns:
+            long_name_upper = str(long_name).upper()
+            if 'TARPON' in long_name_upper: rename_map[long_name] = 'Tarpon GT'
+            elif 'ABSOLUTE' in long_name_upper: rename_map[long_name] = 'Absolute Pace'
+            elif 'SPX' in long_name_upper: rename_map[long_name] = 'SPX Patriot'
+            elif 'REAL INVESTOR' in long_name_upper: rename_map[long_name] = 'Real Investor'
+            elif 'ORGANON' in long_name_upper: rename_map[long_name] = 'Organon FIC FIA'
             
-            # Como getFundsEarnings retorna a rentabilidade acumulada (base 0 ou 1),
-            # precisamos transformar em retornos mensais para o resto do script.
-            mensal = df_raw.resample('ME').last()
+        df_cvm.rename(columns=rename_map, inplace=True)
+        
+        # Converte rentabilidade acumulada (ex: 0.10) para cota base 1 (ex: 1.10)
+        df_cotas = df_cvm + 1.0
+        
+        # Reamostra para o último dia útil do mês e calcula a variação mensal
+        df_mensal = df_cotas.resample('ME').last()
+        df_retornos = df_mensal.pct_change().dropna(how='all')
+        
+        # ==========================================
+        # LÓGICA HÍBRIDA (INTEGRAÇÃO MANUAL + API)
+        # ==========================================
+        # Seus dados corrigidos do Real Investor (do seu script original)
+        legacy_real_investor = {
+            '2012-06': 0.0035, '2012-07': 0.0483, '2012-08': 0.0247, '2012-09': 0.0385, '2012-10': 0.0401, '2012-11': 0.0210, '2012-12': 0.0463,
+            '2013-01': 0.0270, '2013-02': -0.0150, '2013-03': -0.0190, '2013-04': 0.0194, '2013-05': 0.0232, '2013-06': -0.0898, '2013-07': 0.0076, '2013-08': 0.0116, '2013-09': 0.0426, '2013-10': 0.0346, '2013-11': -0.0135, '2013-12': -0.0125,
+            '2014-01': -0.0384, '2014-02': 0.0122, '2014-03': 0.0610, '2014-04': 0.0315, '2014-05': 0.0132, '2014-06': 0.0378, '2014-07': 0.0203, '2014-08': 0.0760, '2014-09': -0.0543, '2014-10': 0.0306, '2014-11': 0.0253, '2014-12': -0.0354,
+            '2015-01': -0.0575, '2015-02': 0.0631, '2015-03': -0.0163, '2015-04': 0.0768, '2015-05': -0.0441, '2015-06': 0.0044, '2015-07': -0.0243, '2015-08': -0.0531, '2015-09': -0.0185, '2015-10': 0.0366, '2015-11': -0.0224, '2015-12': -0.0128,
+            '2016-01': -0.0427, '2016-02': 0.0573, '2016-03': 0.1190, '2016-04': 0.0747, '2016-05': -0.0118, '2016-06': 0.0541, '2016-07': 0.0863, '2016-08': 0.0205, '2016-09': 0.0076, '2016-10': 0.0754, '2016-11': -0.0454, '2016-12': 0.0152,
+            '2017-01': 0.0607, '2017-02': 0.0487, '2017-03': 0.0016, '2017-04': 0.0154, '2017-05': -0.0229, '2017-06': 0.0118, '2017-07': 0.0558, '2017-08': 0.0620, '2017-09': 0.0519, '2017-10': 0.0119, '2017-11': -0.0250, '2017-12': 0.0494
+        }
+        
+        # Converte o dicionário em série temporal alinhada
+        s_legacy_ri = pd.Series(legacy_real_investor, name='Real Investor')
+        s_legacy_ri.index = pd.to_datetime(s_legacy_ri.index).to_period('M').to_timestamp('M')
+        
+        # Preenche os buracos históricos da API com a sua base legada estática
+        if 'Real Investor' in df_retornos.columns:
+            df_retornos['Real Investor'] = df_retornos['Real Investor'].combine_first(s_legacy_ri)
+        else:
+            df_retornos['Real Investor'] = s_legacy_ri
             
-            # Se o brfunds retornar rentabilidade acumulada (ex: 0.91), 
-            # calculamos a variação da variação para ter o retorno mensal relativo.
-            # Convertemos de acumulado para retorno do período: (1+r_atual)/(1+r_anterior) - 1
-            df_returns = mensal.pct_change().dropna()
-            df_returns.index = df_returns.index.to_period('M').to_timestamp('M')
-                
+        return df_retornos
+
     except Exception as e:
-        st.error(f"⚠️ Erro na integração com brfunds: {e}")
+        st.warning(f"⚠️ Instabilidade na integração com a CVM: {e}. Os fundos podem ficar zerados neste período.")
         return pd.DataFrame()
-        
-    return df_returns
-
-
-def merge_historical_and_api(old_series, new_series):
-    if new_series is None or new_series.empty:
-        return old_series
-    api_start = new_series.dropna().index.min()
-    old_filtered = old_series[old_series.index < api_start]
-    combined = pd.concat([old_filtered, new_series.dropna()])
-    return combined.sort_index()
 
 @st.cache_data
 def get_cdi_data(start_date, end_date):
+    """Busca o CDI mensal (Série 4391) na API do BCB."""
     url = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.4391/dados?formato=json"
     try:
         response = requests.get(url)
+        response.raise_for_status()
         data = response.json()
+        
         df = pd.DataFrame(data)
         df['data'] = pd.to_datetime(df['data'], format='%d/%m/%Y')
         df.set_index('data', inplace=True)
         df['valor'] = df['valor'].astype(float) / 100.0
+        
         mask = (df.index >= pd.to_datetime(start_date)) & (df.index <= pd.to_datetime(end_date))
-        return df.loc[mask, 'valor'].resample('ME').last()
-    except:
+        cdi_series = df.loc[mask, 'valor']
+        cdi_series = cdi_series.resample('ME').last()
+        cdi_series.name = 'CDI'
+        
+        return cdi_series
+    except Exception as e:
+        st.error(f"Erro ao baixar dados do CDI (BCB): {e}")
         return pd.Series(dtype='float64')
 
 @st.cache_data
 def get_market_data(tickers, start_date, end_date):
-    if not tickers:
-        return pd.DataFrame()
+    if not tickers: return pd.DataFrame()
     
     processed_tickers = []
     for t in tickers:
@@ -165,10 +176,8 @@ def get_market_data(tickers, start_date, end_date):
         data = yf.download(processed_tickers, start=start_date, end=end_date, progress=False)
         if data.empty: return pd.DataFrame()
 
-        if 'Adj Close' in data.columns:
-            prices = data['Adj Close']
-        elif 'Close' in data.columns:
-            prices = data['Close']
+        if 'Adj Close' in data.columns: prices = data['Adj Close']
+        elif 'Close' in data.columns: prices = data['Close']
         else:
             try: prices = data.xs('Adj Close', level=0, axis=1)
             except KeyError: prices = data.xs('Close', level=0, axis=1)
@@ -185,20 +194,17 @@ def get_market_data(tickers, start_date, end_date):
         
         return returns
     except Exception as e:
-        st.error(f"Erro no download: {e}")
+        st.error(f"Erro no download (YFinance): {e}")
         return pd.DataFrame()
 
 @st.cache_data
 def get_benchmark_data(start_date, end_date):
     try:
         ibov = yf.download("BOVA11.SA", start=start_date, end=end_date, progress=False)
-        if ibov.empty:
-            return pd.Series(dtype='float64')
+        if ibov.empty: return pd.Series(dtype='float64')
 
-        if 'Adj Close' in ibov.columns:
-            prices = ibov['Adj Close']
-        else:
-            prices = ibov.iloc[:, 0]
+        if 'Adj Close' in ibov.columns: prices = ibov['Adj Close']
+        else: prices = ibov.iloc[:, 0]
 
         returns = prices.resample('ME').last().pct_change().dropna()
         returns.name = "Ibovespa"
@@ -208,7 +214,7 @@ def get_benchmark_data(start_date, end_date):
         return pd.Series(dtype='float64')
 
 # ==========================================
-# 3. LÓGICA DE CÁLCULO
+# 2. LÓGICA DE CÁLCULO
 # ==========================================
 def calculate_portfolio_performance(returns_df, weights, initial_cap, monthly_contribution, rebalance_freq):
     returns_df = returns_df.dropna()
@@ -229,7 +235,6 @@ def calculate_portfolio_performance(returns_df, weights, initial_cap, monthly_co
     
     for i in range(len(dates)):
         r_t = asset_returns_np[i]
-        
         port_ret = np.dot(current_weights, r_t)
         monthly_returns.append(port_ret)
         
@@ -267,7 +272,7 @@ def create_monthly_heatmap(returns_series):
     return pivot
 
 # ==========================================
-# 4. INTERFACE
+# 3. INTERFACE E EXECUÇÃO
 # ==========================================
 with st.sidebar:
     st.header("⚙️ Parâmetros")
@@ -288,7 +293,7 @@ with st.sidebar:
     
     with st.expander("Selecionar Ativos", expanded=False):
         default_stocks = "EGIE3, ITUB3, PSSA3, WEGE3, CXSE3, SBSP3, TAEE3, VIVT3, CPFE3, SAPR3, BBAS3, PRIO3, TOTS3, BPAC3, ALUP3, BMOB3"
-        default_fiis = "ALZR11, BRCO11, BTLG11, HGLG11, HGRE11, HGRU11, KNCR11, KNRI11, LVBI11, MXRF11, PMLL11, XPLG11, XPML11"
+        default_fiis = "ALZR11, BRCO11, BTLG11, HGLG11, HGRE11, HGRU11, KNCR11, KNRI11, LVBI11, MXRF11, PMAL11, XPLG11, XPML11"
         default_etfs = "IVVB11"
         stocks_input = st.text_area("Ações BR", default_stocks)
         fiis_input = st.text_area("FIIs", default_fiis)
@@ -316,62 +321,59 @@ stock_list = [x.strip() for x in stocks_input.split(',') if x.strip()]
 fii_list = [x.strip() for x in fiis_input.split(',') if x.strip()]
 etf_list = [x.strip() for x in etfs_input.split(',') if x.strip()]
 
-# Mapeamento dos CNPJs dos seus fundos
-fund_cnpjs = {
+# Dicionário de CNPJs exatos dos fundos acompanhados
+dict_fundos_cnpjs = {
     'Tarpon GT': '22.232.927/0001-90',
+
     'Absolute Pace': '32.073.525/0001-43',
+
     'SPX Patriot': '15.334.585/0001-53', # Favor validar este CNPJ
+
     'Real Investor': '10.500.884/0001-05',
+
     'Organon FIC FIA': '17.400.251/0001-66'
 }
 
-# 1. Carrega os dados hardcoded (histórico antigo/premium)
-df_funds_old = get_hardcoded_funds()
-
-with st.spinner('Consolidando dados de mercado, CVM e taxas (BCB)...'):
-    # Extração de Mercado (Ações, FIIs, ETFs, IBOV, CDI)
+with st.spinner('Consolidando dados de mercado, taxas e fundos CVM...'):
     df_stocks = get_market_data(stock_list, start_date, end_date)
     df_fiis = get_market_data(fii_list, start_date, end_date)
     df_etfs = get_market_data(etf_list, start_date, end_date)
     ibov_ret = get_benchmark_data(start_date, end_date)
     cdi_ret = get_cdi_data(start_date, end_date)
     
-    # Extração da API da CVM
-    df_funds_api = get_fundos_cvm(fund_cnpjs, start_date, end_date)
-    
-    # Mesclagem Híbrida (Manual + API)
-    df_funds_hybrid = pd.DataFrame()
-    for fund_name in fund_cnpjs.keys():
-        old_s = df_funds_old.get(fund_name, pd.Series(dtype=float))
-        api_s = df_funds_api.get(fund_name, pd.Series(dtype=float))
-        df_funds_hybrid[fund_name] = merge_historical_and_api(old_s, api_s)
+    # Nova extração automatizada
+    df_funds = get_fundos_cvm(dict_fundos_cnpjs, start_date, end_date)
 
-    # Construção do Índice Global Consolidado
-    all_dates = df_funds_hybrid.index.union(df_stocks.index).union(df_fiis.index).union(df_etfs.index).union(cdi_ret.index)
-    if not ibov_ret.empty:
-        all_dates = all_dates.union(ibov_ret.index)
-    all_dates = all_dates.sort_values()
+# Agrupando todos os índices de data possíveis
+all_dates = pd.DatetimeIndex([])
+if not df_stocks.empty: all_dates = all_dates.union(df_stocks.index)
+if not df_fiis.empty: all_dates = all_dates.union(df_fiis.index)
+if not df_etfs.empty: all_dates = all_dates.union(df_etfs.index)
+if not cdi_ret.empty: all_dates = all_dates.union(cdi_ret.index)
+if not df_funds.empty: all_dates = all_dates.union(df_funds.index)
+if not ibov_ret.empty: all_dates = all_dates.union(ibov_ret.index)
 
-    master_df = pd.DataFrame(index=all_dates)
+all_dates = all_dates.sort_values()
+master_df = pd.DataFrame(index=all_dates)
 
-    # Atribuição das colunas
-    if not df_stocks.empty: master_df['Ações Consolidadas'] = df_stocks.mean(axis=1)
-    if not df_fiis.empty: master_df['FIIs Consolidados'] = df_fiis.mean(axis=1)
-    if not df_etfs.empty: master_df['ETFs Consolidados'] = df_etfs.mean(axis=1)
+if not df_stocks.empty: master_df['Ações Consolidadas'] = df_stocks.mean(axis=1)
+if not df_fiis.empty: master_df['FIIs Consolidados'] = df_fiis.mean(axis=1)
+if not df_etfs.empty: master_df['ETFs Consolidados'] = df_etfs.mean(axis=1)
 
-    master_df['Tarpon GT'] = df_funds_hybrid['Tarpon GT'].reindex(master_df.index)
-    master_df['Absolute Pace'] = df_funds_hybrid['Absolute Pace'].reindex(master_df.index)
-    master_df['SPX Patriot'] = df_funds_hybrid['SPX Patriot'].reindex(master_df.index)
-    master_df['Real Investor'] = df_funds_hybrid['Real Investor'].reindex(master_df.index)
-    master_df['Organon FIC FIA'] = df_funds_hybrid['Organon FIC FIA'].reindex(master_df.index)
-    master_df['CDI'] = cdi_ret.reindex(master_df.index)
+master_df['CDI'] = cdi_ret.reindex(master_df.index)
 
-    # Filtragem e limpeza final
-    mask = (master_df.index >= pd.to_datetime(start_date)) & (master_df.index <= pd.to_datetime(end_date))
-    master_df = master_df.loc[mask].dropna(how='all').fillna(0)
-    
-    ibov_ret = ibov_ret.reindex(master_df.index).fillna(0)
-    cdi_ret = cdi_ret.reindex(master_df.index).fillna(0)
+# Integração segura dos fundos da CVM no Master Dataframe
+for fundo in dict_fundos_cnpjs.keys():
+    if not df_funds.empty and fundo in df_funds.columns:
+        master_df[fundo] = df_funds[fundo].reindex(master_df.index)
+    else:
+        master_df[fundo] = 0.0  # Asserção de fallback caso a CVM não retorne
+
+# Filtro final de datas
+mask = (master_df.index >= pd.to_datetime(start_date)) & (master_df.index <= pd.to_datetime(end_date))
+master_df = master_df.loc[mask].dropna(how='all').fillna(0)
+ibov_ret = ibov_ret.reindex(master_df.index).fillna(0)
+cdi_ret = cdi_ret.reindex(master_df.index).fillna(0)
 
 weights = {
     'Ações Consolidadas': w_stocks,
@@ -413,7 +415,7 @@ if port_ret is not None:
     col1.markdown(f"<div class='metric-card'><div class='metric-value'>{total_ret:.1%}</div><div class='metric-label'>Retorno Total</div></div>", unsafe_allow_html=True)
     col2.markdown(f"<div class='metric-card'><div class='metric-value'>{cagr:.1%}</div><div class='metric-label'>CAGR (a.a.)</div></div>", unsafe_allow_html=True)
     col3.markdown(f"<div class='metric-card'><div class='metric-value'>{vol:.1%}</div><div class='metric-label'>Volatilidade</div></div>", unsafe_allow_html=True)
-    col4.markdown(f"<div class='metric-card'><div class='metric-value'>{sharpe:.2f}</div><div class='metric-label'>Sharpe (vs. CDI)</div></div>", unsafe_allow_html=True)
+    col4.markdown(f"<div class='metric-card'><div class='metric-label'>Sharpe (vs. CDI)</div><div class='metric-value'>{sharpe:.2f}</div></div>", unsafe_allow_html=True)
     col5.markdown(f"<div class='metric-card'><div class='metric-value' style='color:red'>{max_dd:.1%}</div><div class='metric-label'>Max Drawdown</div></div>", unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
@@ -443,11 +445,9 @@ if port_ret is not None:
             hovermode="x unified"
         )
         st.plotly_chart(fig, width="stretch")
-        st.info("Nota: O gráfico acima mostra a valorização pura das cotas (iniciando em 100), ignorando aportes, para permitir comparação justa com índices.")
 
     with tab_risk:
         col_r1, col_r2 = st.columns(2)
-        
         with col_r1:
             st.markdown("**Drawdown Submarino**")
             fig_dd = px.area(dd_series, title="")
@@ -487,17 +487,13 @@ if port_ret is not None:
             width="stretch",
             height=400
         )
-        st.caption("YTD: Rentabilidade acumulada no ano corrente.")
 
         st.markdown("---")
         st.subheader("💎 Sharpe Ratio (Janelas Móveis)")
         
         sharpe_periods = {
-            "12 Meses": 12,
-            "24 Meses": 24,
-            "48 Meses": 48,
-            "60 Meses": 60,
-            "Desde o Início (Completo)": len(port_ret)
+            "12 Meses": 12, "24 Meses": 24, "48 Meses": 48, 
+            "60 Meses": 60, "Desde o Início": len(port_ret)
         }
         
         sharpe_results = {}
@@ -522,7 +518,6 @@ if port_ret is not None:
             .background_gradient(cmap='Blues', axis=1, vmin=0, vmax=2),
             width="stretch"
         )
-        st.caption("ℹ️ O cálculo de excesso de retorno utiliza o histórico real e dinâmico da série do CDI (BCB), anualizando a volatilidade.")
 
     with tab_patr:
         st.subheader("Evolução do Saldo em Conta")
@@ -584,62 +579,35 @@ if port_ret is not None:
         ))
 
         fig_proj.add_trace(go.Scatter(
-            x=hist_tail.index,
-            y=hist_tail.values,
-            mode="lines",
-            name="Histórico Real",
+            x=hist_tail.index, y=hist_tail.values, mode="lines", name="Histórico Real",
             line=dict(color="#2c3e50", width=3),
             hovertemplate="<b>Histórico</b><br>%{x|%b/%Y}: R$ %{y:,.0f}<extra></extra>",
         ))
 
         fig_proj.add_trace(go.Scatter(
-            x=proj_dates,
-            y=p_otimista,
-            mode="lines",
-            name="Otimista (P95)",
+            x=proj_dates, y=p_otimista, mode="lines", name="Otimista (P95)",
             line=dict(color="#27ae60", width=2.5, dash="dash"),
             hovertemplate="<b>Otimista</b><br>%{x|%b/%Y}: R$ %{y:,.0f}<extra></extra>",
         ))
 
         fig_proj.add_trace(go.Scatter(
-            x=proj_dates,
-            y=p_neutro,
-            mode="lines",
-            name="Neutro (P50)",
+            x=proj_dates, y=p_neutro, mode="lines", name="Neutro (P50)",
             line=dict(color="#2980b9", width=2.5, dash="dot"),
             hovertemplate="<b>Neutro</b><br>%{x|%b/%Y}: R$ %{y:,.0f}<extra></extra>",
         ))
 
         fig_proj.add_trace(go.Scatter(
-            x=proj_dates,
-            y=p_pessimista,
-            mode="lines",
-            name="Pessimista (P5)",
+            x=proj_dates, y=p_pessimista, mode="lines", name="Pessimista (P5)",
             line=dict(color="#e74c3c", width=2.5, dash="dash"),
             hovertemplate="<b>Pessimista</b><br>%{x|%b/%Y}: R$ %{y:,.0f}<extra></extra>",
         ))
 
-        fig_proj.add_vline(
-            x=last_date,
-            line_width=1.5,
-            line_dash="dot",
-            line_color="gray"
-        )
-        fig_proj.add_annotation(
-            x=last_date,
-            y=1,
-            yref="paper",
-            text=" Hoje",
-            showarrow=False,
-            xanchor="left",
-            yanchor="top",
-            font=dict(color="gray", size=12)
-        )
-
+        fig_proj.add_vline(x=last_date, line_width=1.5, line_dash="dot", line_color="gray")
+        
         fig_proj.update_layout(
             template="plotly_white",
             title=dict(
-                text=f"Monte Carlo — {N_SIM:,} simulações | µ={mu:.2%}/mês | σ={sigma:.2%}/mês | Aporte R$ {aporte_mensal:,.0f}/mês",
+                text=f"Monte Carlo — {N_SIM:,} sim. | µ={mu:.2%}/mês | σ={sigma:.2%}/mês | Aporte R$ {aporte_mensal:,.0f}/mês",
                 font_size=13,
             ),
             yaxis=dict(title="Saldo (R$)", tickformat=",.0f"),
@@ -652,42 +620,11 @@ if port_ret is not None:
         st.plotly_chart(fig_proj, width="stretch")
 
         st.markdown("### 📊 Saldo Final Projetado em 36 Meses")
-
-        saldo_otimista   = p_otimista[-1]
-        saldo_neutro     = p_neutro[-1]
-        saldo_pessimista = p_pessimista[-1]
-
         col_p1, col_p2, col_p3 = st.columns(3)
 
-        col_p1.metric(
-            label="🟢 Cenário Otimista (P95)",
-            value=f"R$ {saldo_otimista:,.2f}",
-            delta=f"+R$ {saldo_otimista - saldo_t0:,.0f} vs. hoje",
-        )
-        col_p2.metric(
-            label="🔵 Cenário Neutro (P50)",
-            value=f"R$ {saldo_neutro:,.2f}",
-            delta=f"+R$ {saldo_neutro - saldo_t0:,.0f} vs. hoje",
-        )
-        col_p3.metric(
-            label="🔴 Cenário Pessimista (P5)",
-            value=f"R$ {saldo_pessimista:,.2f}",
-            delta=f"R$ {saldo_pessimista - saldo_t0:,.0f} vs. hoje",
-            delta_color="inverse",
-        )
-
-        st.markdown("---")
-        col_inf1, col_inf2, col_inf3, col_inf4 = st.columns(4)
-        col_inf1.info(f"**Drift µ:** {mu:.3%}/mês")
-        col_inf2.info(f"**Volatilidade σ:** {sigma:.3%}/mês")
-        col_inf3.info(f"**CAGR implícito:** {(1 + mu)**12 - 1:.1%}/ano")
-        col_inf4.info(f"**Saldo atual:** R$ {saldo_t0:,.2f}")
-
-        st.caption(
-            f"⚠️ Projeções geradas por {N_SIM:,} simulações de Monte Carlo com retornos distribuídos normalmente "
-            f"(µ = {mu:.3%}, σ = {sigma:.3%}), incluindo aporte mensal de R$ {aporte_mensal:,.2f}. "
-            "Rentabilidade passada não é garantia de retorno futuro."
-        )
+        col_p1.metric("🟢 Otimista (P95)", f"R$ {p_otimista[-1]:,.2f}", f"+R$ {p_otimista[-1] - saldo_t0:,.0f} vs. hoje")
+        col_p2.metric("🔵 Neutro (P50)", f"R$ {p_neutro[-1]:,.2f}", f"+R$ {p_neutro[-1] - saldo_t0:,.0f} vs. hoje")
+        col_p3.metric("🔴 Pessimista (P5)", f"R$ {p_pessimista[-1]:,.2f}", f"R$ {p_pessimista[-1] - saldo_t0:,.0f} vs. hoje", delta_color="inverse")
 
 else:
     st.info("👈 Configure os parâmetros na barra lateral e aguarde o processamento.")
