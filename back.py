@@ -276,88 +276,93 @@ def create_monthly_heatmap(returns_series):
 
 def run_walkforward_optimization(returns_df, rf_monthly_avg, window_months=6):
     """
-    Executa otimização Walk-Forward com Shrinkage de Covariância e 
-    Filtro de Estabilidade.
-    """
-    # 1. Filtro de Ativos Ativos (Garantindo que trabalhamos apenas com o que o usuário quer)
-    # O returns_df já deve vir filtrado do escopo principal, mas garantimos aqui:
-    active_assets = returns_df.columns.tolist()
-    n_assets = len(active_assets)
-    
-    if n_assets == 0:
-        return [], []
+    Executa otimização Walk-Forward semestral de Máximo Sharpe.
 
-    n_rows = len(returns_df)
+    Para cada janela de `window_months` meses (não sobrepostas), encontra os
+    pesos de Máximo Sharpe usando scipy.optimize.minimize (SLSQP).
+
+    Parâmetros:
+        returns_df      : DataFrame de retornos mensais (linhas=meses, colunas=ativos)
+        rf_monthly_avg  : Taxa risk-free mensal escalar (CDI médio mensal)
+        window_months   : Tamanho de cada janela (padrão=6 semestres)
+
+    Retorna:
+        weights_list : lista de np.arrays com pesos ótimos por janela
+        window_info  : lista de tuplas (data_inicio, data_fim) de cada janela
+    """
+    n_rows, n_assets = returns_df.shape
     rf_ann = rf_monthly_avg * 12
     weights_list = []
-    window_info = []
+    window_info  = []
 
     for start_idx in range(0, n_rows - window_months + 1, window_months):
-        end_idx = start_idx + window_months
+        end_idx     = start_idx + window_months
         window_data = returns_df.iloc[start_idx:end_idx]
 
         if len(window_data) < window_months:
             continue
 
-        # --- 4. ESTABILIDADE NUMÉRICA (SHRINKAGE) ---
-        # Calculamos a matriz de covariância amostral
-        sample_cov = window_data.cov().values * 12
-        # Implementação de Shrinkage Simples: (1-alpha)*S + alpha*diag(S)
-        # Ajuda a evitar que um único ativo domine por variância baixa artificial
-        alpha = 0.15 
-        shrinkage_cov = (1 - alpha) * sample_cov + alpha * np.diag(np.diag(sample_cov))
-        
-        mu_w = window_data.mean().values * 12
+        mu_w    = window_data.mean().values * 12   # retornos anualizados
+        Sigma_w = window_data.cov().values   * 12  # cov. anualizada
 
-        def _neg_sharpe_wf(w, mu=mu_w, S=shrinkage_cov, rf=rf_ann):
+        # Closures capturando mu_w e Sigma_w desta iteração
+        def _port_vol_wf(w, S=Sigma_w):
+            return float(np.sqrt(np.maximum(w @ S @ w, 0.0)))
+
+        def _neg_sharpe_wf(w, mu=mu_w, S=Sigma_w, rf=rf_ann):
             r = float(np.dot(w, mu))
-            # Raiz quadrada da variância com estabilidade
-            v = float(np.sqrt(np.maximum(w @ S @ w, 1e-10)))
-            return -(r - rf) / v if v > 1e-7 else 0.0
+            v = float(np.sqrt(np.maximum(w @ S @ w, 0.0)))
+            return -(r - rf) / v if v > 1e-9 else 0.0
 
-        w0 = np.full(n_assets, 1.0 / n_assets)
+        w0     = np.full(n_assets, 1.0 / n_assets)
         bounds = tuple((0.0, 1.0) for _ in range(n_assets))
-        constraints = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
+        eq_sum = {"type": "eq", "fun": lambda w: np.sum(w) - 1.0}
 
         try:
             res = minimize(
                 _neg_sharpe_wf, w0, method="SLSQP",
-                bounds=bounds, constraints=constraints,
-                options={"ftol": 1e-10, "maxiter": 1000}
+                bounds=bounds, constraints=[eq_sum],
+                options={"ftol": 1e-12, "maxiter": 1000}
             )
-            if res.success:
+            if res.success and np.isfinite(res.x).all():
                 weights_list.append(np.clip(res.x, 0, 1))
-                window_info.append((window_data.index[0], window_data.index[-1]))
-        except:
-            continue
+                window_info.append((
+                    window_data.index[0],
+                    window_data.index[-1]
+                ))
+        except Exception:
+            continue   # janela problemática: ignora silenciosamente
 
     return weights_list, window_info
 
-def build_scenario_portfolio(weights_list, asset_names, min_weight=0.01):
+
+def build_scenario_portfolio(weights_list, asset_names, method="median"):
     """
-    Agrega pesos via Mediana, Normaliza e trata Outliers/Pesos insignificantes.
+    Agrega pesos de todas as janelas Walk-Forward numa carteira única.
+
+    Usa mediana (padrão) para maior robustez a janelas com picos efêmeros.
+
+    Parâmetros:
+        weights_list : lista de arrays de pesos por janela
+        asset_names  : nomes dos ativos (mesma ordem de returns_df)
+        method       : 'median' (recomendado) ou 'mean'
+
+    Retorna:
+        w_cenarios  : np.array de pesos finais normalizados
+        df_windows  : DataFrame com pesos por janela (para auditoria / expander)
     """
     if not weights_list:
         return np.array([]), pd.DataFrame()
 
     weights_matrix = np.vstack(weights_list)
-    
-    # --- 3. TRATAMENTO DE OUTLIERS NA MEDIANA ---
-    w_raw = np.median(weights_matrix, axis=0)
-    
-    # Limpeza de pesos insignificantes (< 1%)
-    w_raw[w_raw < min_weight] = 0
-    
-    # Normalização Robusta
-    total = w_raw.sum()
-    if total > 0:
-        w_final = w_raw / total
-    else:
-        # Fallback caso a limpeza zere tudo (improvável)
-        w_final = np.full(len(asset_names), 1.0 / len(asset_names))
+    df_windows     = pd.DataFrame(weights_matrix, columns=asset_names)
 
-    df_windows = pd.DataFrame(weights_matrix, columns=asset_names)
-    return w_final, df_windows
+    w_raw    = np.median(weights_matrix, axis=0) if method == "median" \
+               else np.mean(weights_matrix, axis=0)
+    total    = w_raw.sum()
+    w_cenarios = w_raw / total if total > 1e-9 else w_raw
+
+    return w_cenarios, df_windows
 
 
 def compute_scenario_metrics(returns_df, weights, rf_monthly_series):
@@ -785,20 +790,22 @@ if port_ret is not None:
     # ABA: FRONTEIRA EFICIENTE DE MARKOWITZ
     # ==========================================
     with tab_ef:
-        st.subheader("🎯 Fronteira Eficiente e Carteira Cenários")
+        st.subheader("🎯 Fronteira Eficiente de Markowitz")
 
-        # --- 1. FILTRO DE ATIVOS ATIVOS (Hard Exclusion) ---
-        # Criamos a lista de ativos baseada estritamente na escolha do Sidebar
-        assets_to_optimize = [
-            a for a, w in weights.items() 
+        # ── 1. FILTRO E PREPARAÇÃO ─────────────────────────────────────────────
+        active_assets = [
+            a for a, w in weights.items()
             if w > 0 and a in master_df.columns
         ]
 
-        if len(assets_to_optimize) < 2:
-            st.warning("⚠️ Selecione pelo menos 2 ativos com peso > 0 no sidebar.")
+        if len(active_assets) < 2:
+            st.warning(
+                "⚠️ A Fronteira Eficiente requer pelo menos **2 ativos com peso > 0**. "
+                "Ajuste os sliders no sidebar."
+            )
         else:
-            # Filtramos o DataFrame principal ANTES de qualquer cálculo
-            returns_ef = master_df[assets_to_optimize].copy()
+            # Dados de retorno somente para ativos ativos
+            returns_ef = master_df[active_assets].replace(0, np.nan).dropna(how="all").fillna(0)
 
             # Anualizando (12 meses)
             mu_vec  = returns_ef.mean() * 12          # Retornos anualizados esperados
@@ -1057,29 +1064,41 @@ if port_ret is not None:
 
             # ── 10. WALK-FORWARD OPTIMIZATION — CARTEIRA CENÁRIOS ─────────────
             st.markdown("---")
-            st.markdown("### 🔄 Otimização Walk-Forward")
-            
-            with st.spinner("Reotimizando janelas semestrais..."):
-                rf_avg = cdi_ret_series.mean()
-                
-                # Passamos apenas os ativos permitidos
-                wf_weights, wf_info = run_walkforward_optimization(
-                    returns_ef, rf_avg, window_months=6
-                )
-                
-                if wf_weights:
-                    # Construção com normalização e corte de 1%
-                    w_cenarios, df_wf_windows = build_scenario_portfolio(
-                        wf_weights, assets_to_optimize, min_weight=0.01
-                    )
-                    
-                    # Cálculo de métricas para a Carteira Cenários
-                    sh_c, vol_c, ret_c = compute_scenario_metrics(
-                        returns_ef, w_cenarios, cdi_ret_series
-                    )
+            st.markdown("### 🔄 Otimização Walk-Forward — Carteira Teórica Cenários")
+            st.caption(
+                "Reotimiza a carteira a cada **6 meses** usando somente dados passados disponíveis "
+                "naquele momento. A **Carteira Cenários** é a mediana dos pesos ótimos de cada "
+                "semestre — privilegiando ativos com constância no Índice de Sharpe ao longo do "
+                "tempo e filtrando picos de performance efêmeros."
+            )
 
-                    # Exibição dos resultados (Gráficos e Tabelas)
-                    # Use assets_to_optimize como índice para o df_comp
+            with st.spinner("⚙️ Executando Walk-Forward Optimization semestral…"):
+                rf_monthly_avg = cdi_ret_series.mean()
+
+                # ── Executa a otimização walk-forward ──────────────────────
+                wf_weights_list, wf_window_info = run_walkforward_optimization(
+                    returns_ef, rf_monthly_avg, window_months=6
+                )
+
+            if len(wf_weights_list) < 2:
+                st.warning(
+                    "⚠️ Dados insuficientes para Walk-Forward "
+                    f"(encontradas {len(wf_weights_list)} janelas — mínimo: 2). "
+                    "Amplie o período de análise no sidebar para pelo menos 12 meses."
+                )
+            else:
+                # ── Constrói a Carteira Cenários ───────────────────────────
+                w_cenarios, df_wf_windows = build_scenario_portfolio(
+                    wf_weights_list, active_assets, method="median"
+                )
+
+                # ── Métricas de validação ──────────────────────────────────
+                shrp_cen, vol_cen, ret_cen = compute_scenario_metrics(
+                    returns_ef, w_cenarios, cdi_ret_series
+                )
+                shrp_cur_wf, vol_cur_wf, ret_cur_wf = compute_scenario_metrics(
+                    returns_ef, w_cur, cdi_ret_series
+                )
 
                 # ── 10a. Tabela comparativa com 4 estratégias ──────────────
                 st.markdown("#### 📋 Alocação Comparativa — 4 Estratégias")
