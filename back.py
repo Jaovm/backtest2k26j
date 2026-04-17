@@ -7,6 +7,7 @@ import plotly.express as px
 from datetime import datetime
 import requests
 import warnings
+from scipy.optimize import minimize
 from brfunds import getFundsEarnings
 
 # ==========================================
@@ -456,12 +457,13 @@ if port_ret is not None:
     
     st.markdown("<br>", unsafe_allow_html=True)
 
-    tab_perf, tab_risk, tab_month, tab_patr, tab_proj = st.tabs([
+    tab_perf, tab_risk, tab_month, tab_patr, tab_proj, tab_ef = st.tabs([
         "📈 Rentabilidade Comparativa",
         "🛡️ Análise de Risco",
         "📅 Retornos Mensais",
         "💰 Evolução Patrimonial",
-        "🔮 Projeções (3 Anos)"
+        "🔮 Projeções (3 Anos)",
+        "🎯 Fronteira Eficiente"
     ])
     
     with tab_perf:
@@ -661,6 +663,282 @@ if port_ret is not None:
         col_p1.metric("🟢 Otimista (P95)", f"R$ {p_otimista[-1]:,.2f}", f"+R$ {p_otimista[-1] - saldo_t0:,.0f} vs. hoje")
         col_p2.metric("🔵 Neutro (P50)", f"R$ {p_neutro[-1]:,.2f}", f"+R$ {p_neutro[-1] - saldo_t0:,.0f} vs. hoje")
         col_p3.metric("🔴 Pessimista (P5)", f"R$ {p_pessimista[-1]:,.2f}", f"R$ {p_pessimista[-1] - saldo_t0:,.0f} vs. hoje", delta_color="inverse")
+
+    # ==========================================
+    # ABA: FRONTEIRA EFICIENTE DE MARKOWITZ
+    # ==========================================
+    with tab_ef:
+        st.subheader("🎯 Fronteira Eficiente de Markowitz")
+
+        # ── 1. FILTRO E PREPARAÇÃO ─────────────────────────────────────────────
+        active_assets = [
+            a for a, w in weights.items()
+            if w > 0 and a in master_df.columns
+        ]
+
+        if len(active_assets) < 2:
+            st.warning(
+                "⚠️ A Fronteira Eficiente requer pelo menos **2 ativos com peso > 0**. "
+                "Ajuste os sliders no sidebar."
+            )
+        else:
+            # Dados de retorno somente para ativos ativos
+            returns_ef = master_df[active_assets].replace(0, np.nan).dropna(how="all").fillna(0)
+
+            # Anualizando (12 meses)
+            mu_vec  = returns_ef.mean() * 12          # Retornos anualizados esperados
+            Sigma   = returns_ef.cov() * 12            # Matriz de covariância anualizada
+            rf_rate = cdi_ret_series.mean() * 12       # Risk-Free Rate (CDI anualizado)
+            n_assets = len(active_assets)
+            Sigma_np = Sigma.values
+            mu_np    = mu_vec.values
+
+            # ── 2. FUNÇÕES DO OTIMIZADOR ──────────────────────────────────────
+            def port_return(w):
+                return float(np.dot(w, mu_np))
+
+            def port_vol(w):
+                return float(np.sqrt(w @ Sigma_np @ w))
+
+            def neg_sharpe(w):
+                r = port_return(w)
+                v = port_vol(w)
+                return -(r - rf_rate) / v if v > 1e-9 else 0.0
+
+            w0     = np.full(n_assets, 1.0 / n_assets)
+            bounds = tuple((0.0, 1.0) for _ in range(n_assets))
+            eq_sum = {"type": "eq", "fun": lambda w: np.sum(w) - 1.0}
+
+            # ── 3. CARTEIRA DE MÍNIMA VOLATILIDADE ───────────────────────────
+            res_minvol = minimize(
+                port_vol, w0, method="SLSQP",
+                bounds=bounds, constraints=[eq_sum],
+                options={"ftol": 1e-12, "maxiter": 1000}
+            )
+            w_minvol    = res_minvol.x
+            ret_minvol  = port_return(w_minvol)
+            vol_minvol  = port_vol(w_minvol)
+            shrp_minvol = (ret_minvol - rf_rate) / vol_minvol if vol_minvol > 1e-9 else 0.0
+
+            # ── 4. CARTEIRA DE MÁXIMO SHARPE ─────────────────────────────────
+            res_maxsh = minimize(
+                neg_sharpe, w0, method="SLSQP",
+                bounds=bounds, constraints=[eq_sum],
+                options={"ftol": 1e-12, "maxiter": 1000}
+            )
+            w_maxsh    = res_maxsh.x
+            ret_maxsh  = port_return(w_maxsh)
+            vol_maxsh  = port_vol(w_maxsh)
+            shrp_maxsh = (ret_maxsh - rf_rate) / vol_maxsh if vol_maxsh > 1e-9 else 0.0
+
+            # ── 5. CARTEIRA ATUAL (baseada nos pesos do usuário) ──────────────
+            raw_w_cur  = np.array([weights[a] for a in active_assets], dtype=float)
+            w_cur      = raw_w_cur / raw_w_cur.sum()
+            ret_cur    = port_return(w_cur)
+            vol_cur    = port_vol(w_cur)
+            shrp_cur   = (ret_cur - rf_rate) / vol_cur if vol_cur > 1e-9 else 0.0
+
+            # ── 6. CURVA DA FRONTEIRA EFICIENTE ──────────────────────────────
+            ret_min_target = ret_minvol
+            ret_max_target = mu_np.max() * 1.05
+            target_rets    = np.linspace(ret_min_target, ret_max_target, 120)
+
+            frontier_vols, frontier_rets = [], []
+            for tgt in target_rets:
+                cons = [
+                    eq_sum,
+                    {"type": "eq", "fun": lambda w, t=tgt: port_return(w) - t}
+                ]
+                res_f = minimize(
+                    port_vol, w0, method="SLSQP",
+                    bounds=bounds, constraints=cons,
+                    options={"ftol": 1e-12, "maxiter": 800}
+                )
+                if res_f.success and res_f.fun < 2.0:   # filtra soluções espúrias
+                    frontier_vols.append(res_f.fun)
+                    frontier_rets.append(tgt)
+
+            # ── 7. ATIVOS INDIVIDUAIS ─────────────────────────────────────────
+            indiv_vols = [float(np.sqrt(Sigma_np[i, i])) for i in range(n_assets)]
+            indiv_rets = [float(mu_np[i])                 for i in range(n_assets)]
+
+            # ── 8. GRÁFICO PLOTLY ─────────────────────────────────────────────
+            fig_ef = go.Figure()
+
+            # Linha da Fronteira
+            fig_ef.add_trace(go.Scatter(
+                x=frontier_vols, y=frontier_rets,
+                mode="lines", name="Fronteira Eficiente",
+                line=dict(color="#3498db", width=3),
+                hovertemplate="<b>Fronteira</b><br>Vol: %{x:.2%}<br>Ret: %{y:.2%}<extra></extra>"
+            ))
+
+            # Capital Market Line (CML) — da Rf até Máx Sharpe e além
+            cml_x = [0, vol_maxsh * 1.6]
+            cml_y = [rf_rate, rf_rate + shrp_maxsh * vol_maxsh * 1.6]
+            fig_ef.add_trace(go.Scatter(
+                x=cml_x, y=cml_y,
+                mode="lines", name="Capital Market Line",
+                line=dict(color="#e67e22", width=1.8, dash="dash"),
+                hoverinfo="skip"
+            ))
+
+            # Ativos Individuais
+            fig_ef.add_trace(go.Scatter(
+                x=indiv_vols, y=indiv_rets,
+                mode="markers+text",
+                name="Ativos Individuais",
+                text=active_assets,
+                textposition="top center",
+                textfont=dict(size=10, color="#555"),
+                marker=dict(size=9, color="#bdc3c7",
+                            line=dict(color="#7f8c8d", width=1)),
+                hovertemplate="<b>%{text}</b><br>Vol: %{x:.2%}<br>Ret: %{y:.2%}<extra></extra>"
+            ))
+
+            # Carteira Atual
+            fig_ef.add_trace(go.Scatter(
+                x=[vol_cur], y=[ret_cur],
+                mode="markers+text",
+                name=f"Carteira Atual  (Sharpe {shrp_cur:.2f})",
+                text=["Atual"],
+                textposition="top right",
+                marker=dict(size=18, color="#f39c12", symbol="star",
+                            line=dict(color="white", width=1.5)),
+                hovertemplate=(
+                    "<b>Carteira Atual</b><br>"
+                    "Ret: %{y:.2%}<br>Vol: %{x:.2%}<br>"
+                    f"Sharpe: {shrp_cur:.2f}<extra></extra>"
+                )
+            ))
+
+            # Máximo Sharpe
+            fig_ef.add_trace(go.Scatter(
+                x=[vol_maxsh], y=[ret_maxsh],
+                mode="markers+text",
+                name=f"Máx. Sharpe  ({shrp_maxsh:.2f})",
+                text=["Máx. Sharpe"],
+                textposition="top right",
+                marker=dict(size=18, color="#27ae60", symbol="star",
+                            line=dict(color="white", width=1.5)),
+                hovertemplate=(
+                    "<b>Máx. Sharpe</b><br>"
+                    "Ret: %{y:.2%}<br>Vol: %{x:.2%}<br>"
+                    f"Sharpe: {shrp_maxsh:.2f}<extra></extra>"
+                )
+            ))
+
+            # Mínima Volatilidade
+            fig_ef.add_trace(go.Scatter(
+                x=[vol_minvol], y=[ret_minvol],
+                mode="markers+text",
+                name=f"Mín. Volatilidade  (Sharpe {shrp_minvol:.2f})",
+                text=["Mín. Vol."],
+                textposition="top right",
+                marker=dict(size=16, color="#8e44ad", symbol="diamond",
+                            line=dict(color="white", width=1.5)),
+                hovertemplate=(
+                    "<b>Mín. Volatilidade</b><br>"
+                    "Ret: %{y:.2%}<br>Vol: %{x:.2%}<br>"
+                    f"Sharpe: {shrp_minvol:.2f}<extra></extra>"
+                )
+            ))
+
+            # Ponto Risk-Free (CDI)
+            fig_ef.add_trace(go.Scatter(
+                x=[0], y=[rf_rate],
+                mode="markers+text",
+                name=f"CDI (Risk-Free  {rf_rate:.2%} a.a.)",
+                text=["CDI"],
+                textposition="bottom right",
+                marker=dict(size=10, color="#e74c3c", symbol="circle",
+                            line=dict(color="white", width=1)),
+                hovertemplate=f"<b>CDI</b><br>Ret: {rf_rate:.2%}<br>Vol: 0%<extra></extra>"
+            ))
+
+            fig_ef.update_layout(
+                template="plotly_white",
+                title=dict(
+                    text="Fronteira Eficiente de Markowitz — Universo de Ativos Ativos",
+                    font_size=15
+                ),
+                xaxis=dict(
+                    title="Volatilidade Anualizada",
+                    tickformat=".1%",
+                    rangemode="tozero"
+                ),
+                yaxis=dict(
+                    title="Retorno Esperado Anualizado",
+                    tickformat=".1%"
+                ),
+                legend=dict(
+                    orientation="h", y=-0.18, x=0.5, xanchor="center",
+                    font_size=11
+                ),
+                hovermode="closest",
+                height=560,
+                margin=dict(t=60, b=120)
+            )
+
+            st.plotly_chart(fig_ef, use_container_width=True)
+
+            # ── 9. COMPARATIVO DE ALOCAÇÃO ────────────────────────────────────
+            st.markdown("---")
+            st.markdown("### 📊 Comparativo de Alocação das Carteiras")
+
+            # Tabela de pesos
+            df_alloc = pd.DataFrame({
+                "⭐ Atual":         np.round(w_cur     * 100, 2),
+                "🟢 Máx. Sharpe":  np.round(w_maxsh   * 100, 2),
+                "🟣 Mín. Vol.":    np.round(w_minvol  * 100, 2),
+            }, index=active_assets)
+            df_alloc.index.name = "Ativo"
+
+            # Tabela de métricas resumo
+            df_metrics = pd.DataFrame({
+                "Retorno Esperado (a.a.)": [
+                    f"{ret_cur:.2%}", f"{ret_maxsh:.2%}", f"{ret_minvol:.2%}"
+                ],
+                "Volatilidade (a.a.)": [
+                    f"{vol_cur:.2%}", f"{vol_maxsh:.2%}", f"{vol_minvol:.2%}"
+                ],
+                "Índice de Sharpe": [
+                    f"{shrp_cur:.2f}", f"{shrp_maxsh:.2f}", f"{shrp_minvol:.2f}"
+                ],
+            }, index=["⭐ Atual", "🟢 Máx. Sharpe", "🟣 Mín. Vol."])
+
+            col_ef1, col_ef2 = st.columns([3, 2])
+
+            with col_ef1:
+                st.markdown("**Alocação por Ativo (%)**")
+                st.dataframe(
+                    df_alloc.style
+                        .format("{:.1f}%")
+                        .background_gradient(cmap="Blues", axis=None, vmin=0, vmax=100)
+                        .highlight_null(color="white"),
+                    use_container_width=True,
+                    height=min(400, 50 + 35 * n_assets)
+                )
+
+            with col_ef2:
+                st.markdown("**Métricas Resumidas**")
+                st.dataframe(
+                    df_metrics.style
+                        .set_properties(**{"text-align": "center"})
+                        .set_table_styles([
+                            {"selector": "th", "props": [("text-align", "center")]}
+                        ]),
+                    use_container_width=True
+                )
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                delta_ret = ret_maxsh - ret_cur
+                delta_vol = vol_maxsh - vol_cur
+                st.info(
+                    f"**Potencial de Melhoria → Máx. Sharpe**\n\n"
+                    f"Retorno: {'▲' if delta_ret >= 0 else '▼'} {abs(delta_ret):.2%} a.a.\n\n"
+                    f"Volatilidade: {'▲' if delta_vol >= 0 else '▼'} {abs(delta_vol):.2%} a.a."
+                )
 
 else:
     st.info("👈 Configure os parâmetros na barra lateral e aguarde o processamento.")
