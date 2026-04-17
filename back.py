@@ -336,21 +336,32 @@ dict_fundos_cnpjs = {
 # CONSOLIDAÇÃO DOS DADOS NO MASTER_DF
 # ==========================================
 
+# ==========================================
+# CONSOLIDAÇÃO DOS DADOS NO MASTER_DF
+# ==========================================
+
 with st.spinner('Consolidando dados de mercado, taxas e fundos CVM...'):
-    df_stocks = get_market_data(stock_list, start_date, end_date)
-    df_fiis = get_market_data(fii_list, start_date, end_date)
-    df_etfs = get_market_data(etf_list, start_date, end_date)
-    ibov_ret = get_benchmark_data(start_date, end_date)
-    cdi_ret = get_cdi_data(start_date, end_date)
     
-    # Busca os fundos na CVM com a nova lógica robusta
-    df_funds = get_fundos_cvm(dict_fundos_cnpjs, start_date, end_date)
+    # CORREÇÃO: Recuamos a data de extração em 45 dias.
+    # Isso fornece o histórico do mês anterior para a função pct_change() funcionar corretamente no mês 1.
+    api_start_date = pd.to_datetime(start_date) - pd.Timedelta(days=45)
+    
+    df_stocks = get_market_data(stock_list, api_start_date, end_date)
+    df_fiis = get_market_data(fii_list, api_start_date, end_date)
+    df_etfs = get_market_data(etf_list, api_start_date, end_date)
+    ibov_ret = get_benchmark_data(api_start_date, end_date)
+    cdi_ret = get_cdi_data(api_start_date, end_date)
+    
+    # Busca os fundos na CVM com a nova lógica robusta e a data corrigida
+    df_funds = get_fundos_cvm(dict_fundos_cnpjs, api_start_date, end_date)
 
 # 1. Agrupando todos os índices de data possíveis (Garantindo DatetimeIndex)
 all_indices = []
 for d in [df_stocks, df_fiis, df_etfs, cdi_ret, df_funds, ibov_ret]:
     if d is not None and not d.empty:
         all_indices.append(d.index)
+
+# ... (restante do seu código continua idêntico)
 
 if all_indices:
     all_dates = all_indices[0]
