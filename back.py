@@ -271,6 +271,128 @@ def create_monthly_heatmap(returns_series):
     return pivot
 
 # ==========================================
+# 2b. WALK-FORWARD OPTIMIZATION FUNCTIONS
+# ==========================================
+
+def run_walkforward_optimization(returns_df, rf_monthly_avg, window_months=6):
+    """
+    Executa otimização Walk-Forward semestral de Máximo Sharpe.
+
+    Para cada janela de `window_months` meses (não sobrepostas), encontra os
+    pesos de Máximo Sharpe usando scipy.optimize.minimize (SLSQP).
+
+    Parâmetros:
+        returns_df      : DataFrame de retornos mensais (linhas=meses, colunas=ativos)
+        rf_monthly_avg  : Taxa risk-free mensal escalar (CDI médio mensal)
+        window_months   : Tamanho de cada janela (padrão=6 semestres)
+
+    Retorna:
+        weights_list : lista de np.arrays com pesos ótimos por janela
+        window_info  : lista de tuplas (data_inicio, data_fim) de cada janela
+    """
+    n_rows, n_assets = returns_df.shape
+    rf_ann = rf_monthly_avg * 12
+    weights_list = []
+    window_info  = []
+
+    for start_idx in range(0, n_rows - window_months + 1, window_months):
+        end_idx     = start_idx + window_months
+        window_data = returns_df.iloc[start_idx:end_idx]
+
+        if len(window_data) < window_months:
+            continue
+
+        mu_w    = window_data.mean().values * 12   # retornos anualizados
+        Sigma_w = window_data.cov().values   * 12  # cov. anualizada
+
+        # Closures capturando mu_w e Sigma_w desta iteração
+        def _port_vol_wf(w, S=Sigma_w):
+            return float(np.sqrt(np.maximum(w @ S @ w, 0.0)))
+
+        def _neg_sharpe_wf(w, mu=mu_w, S=Sigma_w, rf=rf_ann):
+            r = float(np.dot(w, mu))
+            v = float(np.sqrt(np.maximum(w @ S @ w, 0.0)))
+            return -(r - rf) / v if v > 1e-9 else 0.0
+
+        w0     = np.full(n_assets, 1.0 / n_assets)
+        bounds = tuple((0.0, 1.0) for _ in range(n_assets))
+        eq_sum = {"type": "eq", "fun": lambda w: np.sum(w) - 1.0}
+
+        try:
+            res = minimize(
+                _neg_sharpe_wf, w0, method="SLSQP",
+                bounds=bounds, constraints=[eq_sum],
+                options={"ftol": 1e-12, "maxiter": 1000}
+            )
+            if res.success and np.isfinite(res.x).all():
+                weights_list.append(np.clip(res.x, 0, 1))
+                window_info.append((
+                    window_data.index[0],
+                    window_data.index[-1]
+                ))
+        except Exception:
+            continue   # janela problemática: ignora silenciosamente
+
+    return weights_list, window_info
+
+
+def build_scenario_portfolio(weights_list, asset_names, method="median"):
+    """
+    Agrega pesos de todas as janelas Walk-Forward numa carteira única.
+
+    Usa mediana (padrão) para maior robustez a janelas com picos efêmeros.
+
+    Parâmetros:
+        weights_list : lista de arrays de pesos por janela
+        asset_names  : nomes dos ativos (mesma ordem de returns_df)
+        method       : 'median' (recomendado) ou 'mean'
+
+    Retorna:
+        w_cenarios  : np.array de pesos finais normalizados
+        df_windows  : DataFrame com pesos por janela (para auditoria / expander)
+    """
+    if not weights_list:
+        return np.array([]), pd.DataFrame()
+
+    weights_matrix = np.vstack(weights_list)
+    df_windows     = pd.DataFrame(weights_matrix, columns=asset_names)
+
+    w_raw    = np.median(weights_matrix, axis=0) if method == "median" \
+               else np.mean(weights_matrix, axis=0)
+    total    = w_raw.sum()
+    w_cenarios = w_raw / total if total > 1e-9 else w_raw
+
+    return w_cenarios, df_windows
+
+
+def compute_scenario_metrics(returns_df, weights, rf_monthly_series):
+    """
+    Calcula Sharpe, Volatilidade e Retorno anualizados de uma carteira.
+
+    Parâmetros:
+        returns_df        : DataFrame de retornos mensais dos ativos
+        weights           : np.array de pesos da carteira
+        rf_monthly_series : pd.Series do CDI mensal alinhada ao mesmo índice
+
+    Retorna:
+        (sharpe, vol_ann, ret_ann) como floats
+    """
+    port_monthly = pd.Series(
+        returns_df.values @ weights,
+        index=returns_df.index
+    )
+    cdi_aligned = rf_monthly_series.reindex(returns_df.index).fillna(0)
+    excess      = port_monthly - cdi_aligned
+
+    std_m   = port_monthly.std()
+    vol_ann = std_m * np.sqrt(12)
+    ret_ann = port_monthly.mean() * 12
+    sharpe  = (excess.mean() / std_m) * np.sqrt(12) if std_m > 1e-9 else 0.0
+
+    return sharpe, vol_ann, ret_ann
+
+
+# ==========================================
 # 3. INTERFACE E EXECUÇÃO
 # ==========================================
 with st.sidebar:
@@ -939,6 +1061,171 @@ if port_ret is not None:
                     f"Retorno: {'▲' if delta_ret >= 0 else '▼'} {abs(delta_ret):.2%} a.a.\n\n"
                     f"Volatilidade: {'▲' if delta_vol >= 0 else '▼'} {abs(delta_vol):.2%} a.a."
                 )
+
+            # ── 10. WALK-FORWARD OPTIMIZATION — CARTEIRA CENÁRIOS ─────────────
+            st.markdown("---")
+            st.markdown("### 🔄 Otimização Walk-Forward — Carteira Teórica Cenários")
+            st.caption(
+                "Reotimiza a carteira a cada **6 meses** usando somente dados passados disponíveis "
+                "naquele momento. A **Carteira Cenários** é a mediana dos pesos ótimos de cada "
+                "semestre — privilegiando ativos com constância no Índice de Sharpe ao longo do "
+                "tempo e filtrando picos de performance efêmeros."
+            )
+
+            with st.spinner("⚙️ Executando Walk-Forward Optimization semestral…"):
+                rf_monthly_avg = cdi_ret_series.mean()
+
+                # ── Executa a otimização walk-forward ──────────────────────
+                wf_weights_list, wf_window_info = run_walkforward_optimization(
+                    returns_ef, rf_monthly_avg, window_months=6
+                )
+
+            if len(wf_weights_list) < 2:
+                st.warning(
+                    "⚠️ Dados insuficientes para Walk-Forward "
+                    f"(encontradas {len(wf_weights_list)} janelas — mínimo: 2). "
+                    "Amplie o período de análise no sidebar para pelo menos 12 meses."
+                )
+            else:
+                # ── Constrói a Carteira Cenários ───────────────────────────
+                w_cenarios, df_wf_windows = build_scenario_portfolio(
+                    wf_weights_list, active_assets, method="median"
+                )
+
+                # ── Métricas de validação ──────────────────────────────────
+                shrp_cen, vol_cen, ret_cen = compute_scenario_metrics(
+                    returns_ef, w_cenarios, cdi_ret_series
+                )
+                shrp_cur_wf, vol_cur_wf, ret_cur_wf = compute_scenario_metrics(
+                    returns_ef, w_cur, cdi_ret_series
+                )
+
+                # ── 10a. Tabela comparativa com 4 estratégias ──────────────
+                st.markdown("#### 📋 Alocação Comparativa — 4 Estratégias")
+
+                df_comp = pd.DataFrame({
+                    "⭐ Atual":             np.round(w_cur      * 100, 1),
+                    "🟢 Máx. Sharpe":      np.round(w_maxsh    * 100, 1),
+                    "🟣 Mín. Vol.":        np.round(w_minvol   * 100, 1),
+                    "🔵 Cenários (WF)":    np.round(w_cenarios * 100, 1),
+                }, index=active_assets)
+                df_comp.index.name = "Ativo"
+
+                st.dataframe(
+                    df_comp.style
+                        .format("{:.1f}%")
+                        .background_gradient(cmap="Blues", axis=None, vmin=0, vmax=100)
+                        .highlight_null(color="white"),
+                    use_container_width=True,
+                    height=min(500, 60 + 35 * n_assets)
+                )
+
+                # ── 10b. Gráfico de barras agrupadas (Plotly) ──────────────
+                st.markdown("#### 📊 Distribuição de Peso por Estratégia")
+
+                _bar_colors = {
+                    "⭐ Atual":          "#f39c12",
+                    "🟢 Máx. Sharpe":   "#27ae60",
+                    "🟣 Mín. Vol.":     "#8e44ad",
+                    "🔵 Cenários (WF)": "#2980b9",
+                }
+                fig_wf = go.Figure()
+                for col_label, color in _bar_colors.items():
+                    fig_wf.add_trace(go.Bar(
+                        name=col_label,
+                        x=active_assets,
+                        y=df_comp[col_label],
+                        marker_color=color,
+                        opacity=0.87,
+                        hovertemplate=(
+                            f"<b>{col_label}</b><br>"
+                            "%{x}: %{y:.1f}%<extra></extra>"
+                        )
+                    ))
+
+                fig_wf.update_layout(
+                    barmode="group",
+                    template="plotly_white",
+                    title=dict(
+                        text=(
+                            f"Comparativo de Alocação — "
+                            f"{len(wf_weights_list)} janelas semestrais analisadas"
+                        ),
+                        font_size=14
+                    ),
+                    xaxis=dict(title="Ativo", tickangle=-30),
+                    yaxis=dict(title="Peso (%)", ticksuffix="%"),
+                    legend=dict(
+                        orientation="h", y=1.08, x=0.5, xanchor="center", font_size=11
+                    ),
+                    height=440,
+                    margin=dict(t=90, b=80),
+                )
+                st.plotly_chart(fig_wf, use_container_width=True)
+
+                # ── 10c. Métricas de validação ─────────────────────────────
+                st.markdown("#### 📐 Métricas de Validação — Carteira Cenários vs. Atual")
+
+                delta_sh  = shrp_cen   - shrp_cur_wf
+                delta_rt  = ret_cen    - ret_cur_wf
+                delta_vl  = vol_cen    - vol_cur_wf
+
+                df_valid = pd.DataFrame({
+                    "Retorno (a.a.)":    [f"{ret_cur_wf:.2%}",  f"{ret_cen:.2%}"],
+                    "Volatilidade (a.a.)": [f"{vol_cur_wf:.2%}", f"{vol_cen:.2%}"],
+                    "Índice de Sharpe":  [f"{shrp_cur_wf:.2f}", f"{shrp_cen:.2f}"],
+                }, index=["⭐ Carteira Atual", "🔵 Carteira Cenários (WF)"])
+
+                col_v1, col_v2 = st.columns([5, 4])
+
+                with col_v1:
+                    st.dataframe(
+                        df_valid.style
+                            .set_properties(**{"text-align": "center"})
+                            .set_table_styles([
+                                {"selector": "th",
+                                 "props": [("text-align", "center")]}
+                            ]),
+                        use_container_width=True
+                    )
+
+                with col_v2:
+                    _ic = lambda v: "▲" if v >= 0 else "▼"
+                    st.info(
+                        f"**Ganho da Carteira Cenários vs. Atual**\n\n"
+                        f"Sharpe:      {_ic(delta_sh)} {abs(delta_sh):.2f}\n\n"
+                        f"Retorno:     {_ic(delta_rt)} {abs(delta_rt):.2%} a.a.\n\n"
+                        f"Volatilidade:{_ic(delta_vl)} {abs(delta_vl):.2%} a.a."
+                    )
+
+                # ── 10d. Detalhe das janelas semestrais (expansível) ───────
+                with st.expander(
+                    f"🔍 Detalhe por semestre "
+                    f"({len(wf_weights_list)} janelas — "
+                    f"método: mediana dos pesos)"
+                ):
+                    if wf_window_info:
+                        df_wf_disp = df_wf_windows.copy()
+                        df_wf_disp.index = [
+                            f"S{i+1}: "
+                            f"{s.strftime('%b/%Y')} → {e.strftime('%b/%Y')}"
+                            for i, (s, e) in enumerate(wf_window_info)
+                        ]
+                        df_wf_disp.index.name = "Semestre"
+
+                        st.dataframe(
+                            (df_wf_disp * 100).style
+                                .format("{:.1f}%")
+                                .background_gradient(
+                                    cmap="Blues", axis=None, vmin=0, vmax=100
+                                ),
+                            use_container_width=True
+                        )
+                    # Linha de mediana ao rodapé da tabela
+                    st.caption(
+                        "💡 A **Carteira Cenários** é a mediana coluna-a-coluna "
+                        "dos pesos acima, normalizada para somar 100%."
+                    )
 
 else:
     st.info("👈 Configure os parâmetros na barra lateral e aguarde o processamento.")
