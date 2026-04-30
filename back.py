@@ -235,6 +235,9 @@ def resolve_fund_name(cnpj_digits: str) -> str:
         sample_end   = datetime.today().strftime("%d/%m/%y")
         df = getFundsEarnings(fmt, start=sample_start, end=sample_end)
         if df is not None and not df.empty:
+            # Proteção caso "Date" retorne como coluna em vez de índice
+            if "Date" in df.columns:
+                df.set_index("Date", inplace=True)
             col = df.columns[0]
             name = str(col).strip()
             # Remove formatação de CNPJ do nome retornado pela API
@@ -249,16 +252,6 @@ def resolve_fund_name(cnpj_digits: str) -> str:
 def get_fundos_cvm(cnpj_list: tuple, fund_labels: tuple, start_date, end_date):
     """
     Busca retornos mensais dos fundos CVM a partir de uma lista dinâmica de CNPJs.
-
-    Parâmetros:
-        cnpj_list   : tuple de strings de CNPJs (somente dígitos)
-        fund_labels : tuple de nomes/labels correspondentes a cada CNPJ
-        start_date  : data de início (date/datetime)
-        end_date    : data de fim (date/datetime)
-
-    Retorna:
-        DataFrame com retornos mensais; colunas = fund_labels.
-        Fundos inválidos são descartados com aviso.
     """
     if not cnpj_list:
         return pd.DataFrame()
@@ -279,17 +272,23 @@ def get_fundos_cvm(cnpj_list: tuple, fund_labels: tuple, start_date, end_date):
                 failed_funds.append((label, "Sem dados retornados pela API CVM"))
                 continue
 
-            # Índice temporal
+            # Tratamento adequado do Índice Temporal
             if "Date" in df_raw.columns:
-                df_raw["Date"] = pd.to_datetime(df_raw["Date"])
+                df_raw["Date"] = pd.to_datetime(df_raw["Date"], errors='coerce')
                 df_raw.set_index("Date", inplace=True)
-            df_raw.index = pd.to_datetime(df_raw.index)
+            elif not pd.api.types.is_datetime64_any_dtype(df_raw.index):
+                df_raw.index = pd.to_datetime(df_raw.index, errors='coerce')
+                
             df_raw = df_raw.sort_index()
+
+            # Força valores numéricos (API pode retornar strings ocasionais, impossibilitando cálculo)
+            for c in df_raw.columns:
+                df_raw[c] = pd.to_numeric(df_raw[c], errors="coerce")
 
             # Usa a primeira coluna numérica disponível
             col = df_raw.select_dtypes(include="number").columns
             if col.empty:
-                failed_funds.append((label, "Nenhuma coluna numérica encontrada"))
+                failed_funds.append((label, "Nenhuma coluna numérica encontrada nos dados"))
                 continue
 
             series = df_raw[col[0]].rename(label)
