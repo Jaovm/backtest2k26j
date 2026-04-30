@@ -565,7 +565,7 @@ with st.sidebar:
     # Sliders para classes de ativos
     w_stocks = st.slider("📈 Ações",  0, 100, 35, key="w_stocks")
     w_fiis   = st.slider("🏢 FIIs",   0, 100,  0, key="w_fiis")
-    w_etfs   = st.slider("🌍 ETFs",   0, 100, 20, key="w_etfs")
+    w_etfs   = st.slider("🌍 ETFs",   0, 100, 45, key="w_etfs")
     w_cdi    = st.slider("💰 CDI",    0, 100,  0, key="w_cdi")
 
     # ── Seleção Dinâmica de Fundos CVM ────────────────────────────────────────
@@ -582,8 +582,6 @@ with st.sidebar:
     DEFAULT_CNPJS = (
         "22.232.927/0001-90\n"   # Tarpon GT
         "32.073.525/0001-43\n"   # Absolute Pace
-        "15.334.585/0001-53\n"   # SPX Patriot
-        "10.500.884/0001-05\n"   # Real Investor
         "17.400.251/0001-66"     # Organon FIC FIA
     )
 
@@ -619,7 +617,7 @@ with st.sidebar:
 
     # ── Inputs de Peso por Fundo (dinâmico) ───────────────────────────────────
     fund_weights = {}
-    DEFAULT_FUND_WEIGHTS = [10, 25, 0, 0, 10]   # pesos padrão para os CNPJs padrão
+    DEFAULT_FUND_WEIGHTS = [10, 5, 5]   # pesos padrão para os CNPJs padrão
 
     if valid_cnpjs:
         st.markdown(
