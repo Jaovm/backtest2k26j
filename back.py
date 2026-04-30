@@ -695,12 +695,10 @@ with st.spinner("📡 Carregando dados de mercado, taxas e fundos CVM..."):
     # Busca fundos CVM de forma dinâmica
     df_funds = pd.DataFrame()
     if valid_cnpjs:
-        df_funds = get_fundos_cvm(
-            tuple(valid_cnpjs),
-            tuple(fund_labels),
-            api_start_date,
-            end_date,
-        )
+        df_funds = get_fundos_cvm(dict_fundos, start_date, end_date)
+        if not df_funds.empty:
+            # Garante que o índice esteja alinhado com o restante do portfólio
+            master_df = master_df.join(df_funds, how='left').fillna(0)
 
 # ── Montar Master DataFrame ───────────────────────────────────────────────────
 all_indices = []
