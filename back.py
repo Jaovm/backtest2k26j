@@ -246,69 +246,60 @@ def resolve_fund_name(cnpj_digits: str) -> str:
 
 
 @st.cache_data(show_spinner=False, ttl=86400)
-def get_fundos_cvm(cnpj_list: tuple, fund_labels: tuple, start_date, end_date):
+def get_fundos_cvm(cnpj_dict, start_date, end_date):
     """
-    Busca retornos mensais dos fundos CVM a partir de uma lista dinâmica de CNPJs.
-
-    Parâmetros:
-        cnpj_list   : tuple de strings de CNPJs (somente dígitos)
-        fund_labels : tuple de nomes/labels correspondentes a cada CNPJ
-        start_date  : data de início (date/datetime)
-        end_date    : data de fim (date/datetime)
-
-    Retorna:
-        DataFrame com retornos mensais; colunas = fund_labels.
-        Fundos inválidos são descartados com aviso.
+    Versão otimizada para evitar o erro 'Nenhuma coluna numérica encontrada'.
     """
-    if not cnpj_list:
+    try:
+        # 1. Sanitização: brfunds exige CNPJs apenas com números (sem pontos ou barras)
+        clean_cnpjs = [re.sub(r'\D', '', cnpj) for cnpj in cnpj_dict.values()]
+        
+        # Datas no formato que o brfunds espera (DD/MM/YY)
+        start_str = start_date.strftime('%d/%m/%y')
+        end_str = end_date.strftime('%d/%m/%y')
+        
+        # 2. Chamada da API
+        df_cvm = getFundsEarnings(*clean_cnpjs, start=start_str, end=end_str)
+        
+        if df_cvm is None or df_cvm.empty:
+            return pd.DataFrame()
+
+        # 3. Tratamento do erro 'Nenhuma coluna numérica encontrada'
+        # Forçamos a seleção apenas de colunas que contêm dados financeiros
+        df_cvm = df_cvm.select_dtypes(include=[np.number])
+        
+        if df_cvm.empty:
+            return pd.DataFrame()
+
+        # 4. Mapeamento Inteligente
+        # A CVM pode retornar o CNPJ ou o Nome Empresarial Completo. 
+        # Esta lógica faz o "de-para" independente do formato retornado.
+        new_cols = {}
+        for col in df_cvm.columns:
+            col_str = str(col).upper()
+            # Tenta encontrar qual fundo do seu dicionário pertence a esta coluna
+            for name, cnpj in cnpj_dict.items():
+                cnpj_only_numbers = re.sub(r'\D', '', cnpj)
+                if cnpj_only_numbers in col_str or name.upper() in col_str:
+                    new_cols[col] = name
+                    break
+        
+        df_cvm = df_cvm.rename(columns=new_cols)
+        
+        # Mantém apenas as colunas que conseguimos renomear com sucesso
+        valid_cols = [c for c in new_cols.values() if c in df_cvm.columns]
+        df_cvm = df_cvm[valid_cols]
+        
+        # 5. Transformação em Retorno Mensal
+        df_cvm.index = pd.to_datetime(df_cvm.index)
+        # O brfunds retorna (1 + r), então subtraímos 1 para ter o retorno líquido
+        df_ret = (df_cvm).resample('ME').last().pct_change().dropna(how='all')
+        
+        return df_ret
+
+    except Exception as e:
+        st.error(f"Erro ao processar dados da CVM: {e}")
         return pd.DataFrame()
-
-    result_frames = []
-    failed_funds  = []
-
-    for cnpj_digits, label in zip(cnpj_list, fund_labels):
-        try:
-            fmt_cnpj = _fmt_cnpj(cnpj_digits)
-            start_str = start_date.strftime("%d/%m/%y") if hasattr(start_date, "strftime") \
-                        else pd.to_datetime(start_date).strftime("%d/%m/%y")
-            end_str   = datetime.today().strftime("%d/%m/%y")
-
-            df_raw = getFundsEarnings(fmt_cnpj, start=start_str, end=end_str)
-
-            if df_raw is None or df_raw.empty:
-                failed_funds.append((label, "Sem dados retornados pela API CVM"))
-                continue
-
-            # Índice temporal
-            if "Date" in df_raw.columns:
-                df_raw["Date"] = pd.to_datetime(df_raw["Date"])
-                df_raw.set_index("Date", inplace=True)
-            df_raw.index = pd.to_datetime(df_raw.index)
-            df_raw = df_raw.sort_index()
-
-            # Usa a primeira coluna numérica disponível
-            col = df_raw.select_dtypes(include="number").columns
-            if col.empty:
-                failed_funds.append((label, "Nenhuma coluna numérica encontrada"))
-                continue
-
-            series = df_raw[col[0]].rename(label)
-
-            # Retorno mensal
-            ret_monthly = (series + 1.0).resample("ME").last().pct_change().dropna()
-            result_frames.append(ret_monthly)
-
-        except Exception as exc:
-            failed_funds.append((label, str(exc)))
-
-    # Exibe avisos para fundos problemáticos (fora do cache)
-    for label, reason in failed_funds:
-        st.warning(f"⚠️ Fundo **{label}** ignorado: {reason}")
-
-    if not result_frames:
-        return pd.DataFrame()
-
-    df_out = pd.concat(result_frames, axis=1)
 
     # ── Lógica Real Investor (mantida intacta) ────────────────────────────────
     legacy_ri = {
